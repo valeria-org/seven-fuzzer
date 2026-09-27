@@ -87,32 +87,13 @@ if(NOT softfloat_POPULATED)
   endif()
 endif()
 
-set(ICED_X86_SOURCES
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/block_encoder.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/decoder.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/encoder.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/encoder_handlers.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/encoder_methods.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/encoder_ops.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/fastfmt.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/gas_formatter.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/handlers.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/instruction.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/instruction_create.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/instruction_info.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/intel_formatter.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/masm_formatter.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/memory_size_info.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/mvex_info_data.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/nasm_formatter.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/op_code_info.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/register_info.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/table_deserializer.cpp
-  ${SEVEN_ROOT}/iced_x86/src/iced_x86/src/tables.cpp
-)
+file(GLOB_RECURSE ICED_X86_SOURCES CONFIGURE_DEPENDS "${SEVEN_ROOT}/iced_x86/src/*.cpp")
 add_library(iced_x86 STATIC ${ICED_X86_SOURCES})
 target_include_directories(iced_x86 PUBLIC "${SEVEN_ROOT}/iced_x86/include")
-target_compile_definitions(iced_x86 PUBLIC _CRT_SECURE_NO_WARNINGS ICED_X86_CONSTEXPR_HANDLERS=0)
+# iced's own sources include its private headers as "internal/...".
+target_include_directories(iced_x86 PRIVATE "${SEVEN_ROOT}/iced_x86/src")
+target_compile_features(iced_x86 PUBLIC cxx_std_17)
+target_compile_definitions(iced_x86 PUBLIC _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
   target_compile_options(iced_x86 PRIVATE /WX-)
 endif()

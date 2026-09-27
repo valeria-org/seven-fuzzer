@@ -12,7 +12,7 @@
 #include <iced_x86/code.hpp>
 #include <iced_x86/encoder.hpp>
 #include <iced_x86/instruction.hpp>
-#include <iced_x86/instruction_create.hpp>
+#include <iced_x86/instruction.hpp>
 #include <iced_x86/memory_operand.hpp>
 #include <iced_x86/op_kind.hpp>
 #include <iced_x86/register.hpp>
@@ -25,7 +25,6 @@ namespace {
 using iced_x86::Code;
 using iced_x86::Encoder;
 using iced_x86::Instruction;
-using iced_x86::InstructionFactory;
 using iced_x86::MemoryOperand;
 using iced_x86::OpKind;
 using iced_x86::Register;
@@ -35,20 +34,20 @@ enum class Width : int { W8 = 0, W16 = 1, W32 = 2, W64 = 3 };
 constexpr std::array<Register, 16> kRegs8 = {
     Register::AL,   Register::CL,   Register::DL,   Register::BL,
     Register::SPL,  Register::BPL,  Register::SIL,  Register::DIL,
-    Register::R8_L, Register::R9_L, Register::R10_L, Register::R11_L,
-    Register::R12_L, Register::R13_L, Register::R14_L, Register::R15_L,
+    Register::R8L, Register::R9L, Register::R10L, Register::R11L,
+    Register::R12L, Register::R13L, Register::R14L, Register::R15L,
 };
 constexpr std::array<Register, 16> kRegs16 = {
     Register::AX,   Register::CX,   Register::DX,   Register::BX,
     Register::SP,   Register::BP,   Register::SI,   Register::DI,
-    Register::R8_W, Register::R9_W, Register::R10_W, Register::R11_W,
-    Register::R12_W, Register::R13_W, Register::R14_W, Register::R15_W,
+    Register::R8W, Register::R9W, Register::R10W, Register::R11W,
+    Register::R12W, Register::R13W, Register::R14W, Register::R15W,
 };
 constexpr std::array<Register, 16> kRegs32 = {
     Register::EAX,  Register::ECX,  Register::EDX,  Register::EBX,
     Register::ESP,  Register::EBP,  Register::ESI,  Register::EDI,
-    Register::R8_D, Register::R9_D, Register::R10_D, Register::R11_D,
-    Register::R12_D, Register::R13_D, Register::R14_D, Register::R15_D,
+    Register::R8D, Register::R9D, Register::R10D, Register::R11D,
+    Register::R12D, Register::R13D, Register::R14D, Register::R15D,
 };
 constexpr std::array<Register, 16> kRegs64 = {
     Register::RAX, Register::RCX, Register::RDX, Register::RBX,
@@ -193,7 +192,7 @@ struct Ctx {
 }
 [[nodiscard]] int widx16_32_64(Width w) { return w == Width::W16 ? 0 : w == Width::W32 ? 1 : 2; }
 
-// InstructionFactory's integer overloads always build the immediate as OpKind::IMMEDIATE32, and
+// Instruction's integer factory overloads always build the immediate as OpKind::Immediate32, and
 // the encoder refuses anything but the exact kind the opcode wants ("Expected OpKind N, actual
 // OpKind 9"). next()'s catch-and-retry swallowed those failures, so every family below looked
 // like it was covering its immediate forms while actually only ever emitting the one code that
@@ -209,7 +208,7 @@ void set_imm_kind(Instruction& instr, std::uint32_t index, OpKind kind) {
 
 // A plain 8-bit immediate that is not widened: shift counts, bit offsets, SIMD selectors.
 void set_imm8(Instruction& instr, std::uint32_t index, std::uint64_t value) {
-  set_imm_kind(instr, index, OpKind::IMMEDIATE8);
+  set_imm_kind(instr, index, OpKind::Immediate8);
   instr.set_immediate8(static_cast<std::uint8_t>(value));
 }
 
@@ -221,34 +220,34 @@ void set_imm_sized(Instruction& instr, std::uint32_t index, Width w, bool sign_e
     const auto byte = static_cast<std::int8_t>(value);
     switch (w) {
       case Width::W16:
-        set_imm_kind(instr, index, OpKind::IMMEDIATE8TO16);
+        set_imm_kind(instr, index, OpKind::Immediate8to16);
         instr.set_immediate8to16(static_cast<std::int16_t>(byte));
         return;
       case Width::W32:
-        set_imm_kind(instr, index, OpKind::IMMEDIATE8TO32);
+        set_imm_kind(instr, index, OpKind::Immediate8to32);
         instr.set_immediate8to32(static_cast<std::int32_t>(byte));
         return;
       default:
-        set_imm_kind(instr, index, OpKind::IMMEDIATE8TO64);
+        set_imm_kind(instr, index, OpKind::Immediate8to64);
         instr.set_immediate8to64(static_cast<std::int64_t>(byte));
         return;
     }
   }
   switch (w) {
     case Width::W8:
-      set_imm_kind(instr, index, OpKind::IMMEDIATE8);
+      set_imm_kind(instr, index, OpKind::Immediate8);
       instr.set_immediate8(static_cast<std::uint8_t>(value));
       return;
     case Width::W16:
-      set_imm_kind(instr, index, OpKind::IMMEDIATE16);
+      set_imm_kind(instr, index, OpKind::Immediate16);
       instr.set_immediate16(static_cast<std::uint16_t>(value));
       return;
     case Width::W32:
-      set_imm_kind(instr, index, OpKind::IMMEDIATE32);
+      set_imm_kind(instr, index, OpKind::Immediate32);
       instr.set_immediate32(static_cast<std::uint32_t>(value));
       return;
     default:
-      set_imm_kind(instr, index, OpKind::IMMEDIATE32TO64);
+      set_imm_kind(instr, index, OpKind::Immediate32to64);
       instr.set_immediate32to64(static_cast<std::int64_t>(static_cast<std::int32_t>(value)));
       return;
   }
@@ -268,15 +267,15 @@ struct AluCodes {
 
 #define SF_ALU(OP)                                                                                     \
   AluCodes {                                                                                            \
-    {Code::OP##_RM8_R8, Code::OP##_RM16_R16, Code::OP##_RM32_R32, Code::OP##_RM64_R64},                 \
-    {Code::OP##_R8_RM8, Code::OP##_R16_RM16, Code::OP##_R32_RM32, Code::OP##_R64_RM64},                 \
-    {Code::OP##_RM8_IMM8, Code::OP##_RM16_IMM8, Code::OP##_RM32_IMM8, Code::OP##_RM64_IMM8},             \
-    {Code::OP##_RM8_IMM8, Code::OP##_RM16_IMM16, Code::OP##_RM32_IMM32, Code::OP##_RM64_IMM32},          \
-    {Code::OP##_AL_IMM8, Code::OP##_AX_IMM16, Code::OP##_EAX_IMM32, Code::OP##_RAX_IMM32},               \
+    {Code::OP##_rm8_r8, Code::OP##_rm16_r16, Code::OP##_rm32_r32, Code::OP##_rm64_r64},                 \
+    {Code::OP##_r8_rm8, Code::OP##_r16_rm16, Code::OP##_r32_rm32, Code::OP##_r64_rm64},                 \
+    {Code::OP##_rm8_imm8, Code::OP##_rm16_imm8, Code::OP##_rm32_imm8, Code::OP##_rm64_imm8},             \
+    {Code::OP##_rm8_imm8, Code::OP##_rm16_imm16, Code::OP##_rm32_imm32, Code::OP##_rm64_imm32},          \
+    {Code::OP##_AL_imm8, Code::OP##_AX_imm16, Code::OP##_EAX_imm32, Code::OP##_RAX_imm32},               \
   }
 
 const std::array<AluCodes, 8> kAluOps = {
-    SF_ALU(ADD), SF_ALU(OR), SF_ALU(ADC), SF_ALU(SBB), SF_ALU(AND), SF_ALU(SUB), SF_ALU(XOR), SF_ALU(CMP),
+    SF_ALU(Add), SF_ALU(Or), SF_ALU(Adc), SF_ALU(Sbb), SF_ALU(And), SF_ALU(Sub), SF_ALU(Xor), SF_ALU(Cmp),
 };
 #undef SF_ALU
 
@@ -293,7 +292,7 @@ const std::array<AluCodes, 8> kAluOps = {
                                            : Register::RAX;
     const std::int32_t imm =
         static_cast<std::int32_t>(random_imm(c.rng, w == Width::W8 ? 8 : w == Width::W16 ? 16 : 32));
-    auto instr = InstructionFactory::with2(t.acc_imm[static_cast<std::size_t>(wi)], acc, imm);
+    auto instr = Instruction::with2(t.acc_imm[static_cast<std::size_t>(wi)], acc, imm).value();
     set_imm_sized(instr, 1, w, false, static_cast<std::uint64_t>(imm));
     return instr;
   }
@@ -301,7 +300,7 @@ const std::array<AluCodes, 8> kAluOps = {
   if (form == 0) {
     const int a = pick_reg_index(c.rng);
     const int b = pick_reg_index(c.rng);
-    return InstructionFactory::with2(t.rm_r[static_cast<std::size_t>(wi)], reg_of(w, a), reg_of(w, b));
+    return Instruction::with2(t.rm_r[static_cast<std::size_t>(wi)], reg_of(w, a), reg_of(w, b)).value();
   }
   if (form == 1) {
     const int a = pick_reg_index(c.rng);
@@ -310,7 +309,7 @@ const std::array<AluCodes, 8> kAluOps = {
     const std::int32_t imm = short_imm
         ? static_cast<std::int32_t>(static_cast<std::int8_t>(random_imm(c.rng, 8)))
         : static_cast<std::int32_t>(random_imm(c.rng, w == Width::W8 ? 8 : w == Width::W16 ? 16 : 32));
-    auto instr = InstructionFactory::with2(code, reg_of(w, a), imm);
+    auto instr = Instruction::with2(code, reg_of(w, a), imm).value();
     set_imm_sized(instr, 1, w, short_imm, static_cast<std::uint64_t>(imm));
     return instr;
   }
@@ -323,15 +322,15 @@ const std::array<AluCodes, 8> kAluOps = {
     const std::int32_t imm = short_imm
         ? static_cast<std::int32_t>(static_cast<std::int8_t>(random_imm(c.rng, 8)))
         : static_cast<std::int32_t>(random_imm(c.rng, w == Width::W8 ? 8 : w == Width::W16 ? 16 : 32));
-    auto instr = InstructionFactory::with2(code, mem_operand(disp), imm);
+    auto instr = Instruction::with2(code, mem_operand(disp), imm).value();
     set_imm_sized(instr, 1, w, short_imm, static_cast<std::uint64_t>(imm));
     return instr;
   }
   const int r = pick_reg_index(c.rng);
   if (rand_int(c.rng, 0, 1) == 0) {
-    return InstructionFactory::with2(t.rm_r[static_cast<std::size_t>(wi)], mem_operand(disp), reg_of(w, r));
+    return Instruction::with2(t.rm_r[static_cast<std::size_t>(wi)], mem_operand(disp), reg_of(w, r)).value();
   }
-  return InstructionFactory::with2(t.r_rm[static_cast<std::size_t>(wi)], reg_of(w, r), mem_operand(disp));
+  return Instruction::with2(t.r_rm[static_cast<std::size_t>(wi)], reg_of(w, r), mem_operand(disp)).value();
 }
 
 struct TestCodes {
@@ -339,15 +338,15 @@ struct TestCodes {
   std::array<Code, 4> rm_imm;
 };
 const TestCodes kTest = {
-    {Code::TEST_RM8_R8, Code::TEST_RM16_R16, Code::TEST_RM32_R32, Code::TEST_RM64_R64},
-    {Code::TEST_RM8_IMM8, Code::TEST_RM16_IMM16, Code::TEST_RM32_IMM32, Code::TEST_RM64_IMM32},
+    {Code::Test_rm8_r8, Code::Test_rm16_r16, Code::Test_rm32_r32, Code::Test_rm64_r64},
+    {Code::Test_rm8_imm8, Code::Test_rm16_imm16, Code::Test_rm32_imm32, Code::Test_rm64_imm32},
 };
 // F6/F7 /1 is a second, undocumented-but-real encoding of TEST r/m, imm that decodes to its own
 // Code. Silicon treats it exactly like /0, which is worth confirming rather than assuming.
-constexpr std::array<Code, 4> kTestImmF7R1 = {Code::TEST_RM8_IMM8_F6R1, Code::TEST_RM16_IMM16_F7R1,
-                                               Code::TEST_RM32_IMM32_F7R1, Code::TEST_RM64_IMM32_F7R1};
-constexpr std::array<Code, 4> kTestAccImm = {Code::TEST_AL_IMM8, Code::TEST_AX_IMM16,
-                                              Code::TEST_EAX_IMM32, Code::TEST_RAX_IMM32};
+constexpr std::array<Code, 4> kTestImmF7R1 = {Code::Test_rm8_imm8_F6r1, Code::Test_rm16_imm16_F7r1,
+                                               Code::Test_rm32_imm32_F7r1, Code::Test_rm64_imm32_F7r1};
+constexpr std::array<Code, 4> kTestAccImm = {Code::Test_AL_imm8, Code::Test_AX_imm16,
+                                              Code::Test_EAX_imm32, Code::Test_RAX_imm32};
 
 [[nodiscard]] std::optional<Instruction> gen_test(Ctx& c) {
   const Width w = static_cast<Width>(rand_int(c.rng, 0, 3));
@@ -360,24 +359,24 @@ constexpr std::array<Code, 4> kTestAccImm = {Code::TEST_AL_IMM8, Code::TEST_AX_I
     const bool accumulator = rand_int(c.rng, 0, 1) == 0;
     const auto wu = static_cast<std::size_t>(wi);
     auto instr = accumulator
-        ? InstructionFactory::with2(kTestAccImm[wu],
+        ? Instruction::with2(kTestAccImm[wu],
                                     w == Width::W8    ? Register::AL
                                     : w == Width::W16 ? Register::AX
                                     : w == Width::W32 ? Register::EAX
                                                       : Register::RAX,
-                                    imm)
-        : InstructionFactory::with2(kTestImmF7R1[wu], reg_of(w, pick_reg_index(c.rng)), imm);
+                                    imm).value()
+        : Instruction::with2(kTestImmF7R1[wu], reg_of(w, pick_reg_index(c.rng)), imm).value();
     set_imm_sized(instr, 1, w, false, static_cast<std::uint64_t>(imm));
     return instr;
   }
   if (form == 0) {
     const int a = pick_reg_index(c.rng), b = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kTest.rm_r[static_cast<std::size_t>(wi)], reg_of(w, a), reg_of(w, b));
+    return Instruction::with2(kTest.rm_r[static_cast<std::size_t>(wi)], reg_of(w, a), reg_of(w, b)).value();
   }
   if (form == 1) {
     const int a = pick_reg_index(c.rng);
     const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, imm_bits));
-    auto instr = InstructionFactory::with2(kTest.rm_imm[static_cast<std::size_t>(wi)], reg_of(w, a), imm);
+    auto instr = Instruction::with2(kTest.rm_imm[static_cast<std::size_t>(wi)], reg_of(w, a), imm).value();
     set_imm_sized(instr, 1, w, false, static_cast<std::uint64_t>(imm));
     return instr;
   }
@@ -385,10 +384,10 @@ constexpr std::array<Code, 4> kTestAccImm = {Code::TEST_AL_IMM8, Code::TEST_AX_I
   const std::int8_t disp = random_disp8(c.rng);
   if (rand_int(c.rng, 0, 1) == 0) {
     const int b = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kTest.rm_r[static_cast<std::size_t>(wi)], mem_operand(disp), reg_of(w, b));
+    return Instruction::with2(kTest.rm_r[static_cast<std::size_t>(wi)], mem_operand(disp), reg_of(w, b)).value();
   }
   const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, imm_bits));
-  auto test_mem = InstructionFactory::with2(kTest.rm_imm[static_cast<std::size_t>(wi)], mem_operand(disp), imm);
+  auto test_mem = Instruction::with2(kTest.rm_imm[static_cast<std::size_t>(wi)], mem_operand(disp), imm).value();
   set_imm_sized(test_mem, 1, w, false, static_cast<std::uint64_t>(imm));
   return test_mem;
 }
@@ -398,8 +397,8 @@ constexpr std::array<Code, 4> kTestAccImm = {Code::TEST_AL_IMM8, Code::TEST_AX_I
 struct Unary1Codes {
   std::array<Code, 4> rm;
 };
-#define SF_UN(OP) Unary1Codes{{Code::OP##_RM8, Code::OP##_RM16, Code::OP##_RM32, Code::OP##_RM64}}
-const std::array<Unary1Codes, 4> kUnaryOps = {SF_UN(INC), SF_UN(DEC), SF_UN(NEG), SF_UN(NOT)};
+#define SF_UN(OP) Unary1Codes{{Code::OP##_rm8, Code::OP##_rm16, Code::OP##_rm32, Code::OP##_rm64}}
+const std::array<Unary1Codes, 4> kUnaryOps = {SF_UN(Inc), SF_UN(Dec), SF_UN(Neg), SF_UN(Not)};
 #undef SF_UN
 
 [[nodiscard]] std::optional<Instruction> gen_unary(Ctx& c) {
@@ -407,10 +406,10 @@ const std::array<Unary1Codes, 4> kUnaryOps = {SF_UN(INC), SF_UN(DEC), SF_UN(NEG)
   const Width w = static_cast<Width>(rand_int(c.rng, 0, 3));
   if (rand_int(c.rng, 0, 1) == 0) {
     const int a = pick_reg_index(c.rng);
-    return InstructionFactory::with1(t.rm[static_cast<std::size_t>(w)], reg_of(w, a));
+    return Instruction::with1(t.rm[static_cast<std::size_t>(w)], reg_of(w, a)).value();
   }
   c.touches_memory = true;
-  return InstructionFactory::with1(t.rm[static_cast<std::size_t>(w)], mem_operand(random_disp8(c.rng)));
+  return Instruction::with1(t.rm[static_cast<std::size_t>(w)], mem_operand(random_disp8(c.rng))).value();
 }
 
 // ---------------------------------------------------------------- shift/rot
@@ -424,13 +423,13 @@ struct ShiftCodes {
 };
 #define SF_SH(OP)                                                                                \
   ShiftCodes {                                                                                     \
-    {Code::OP##_RM8_IMM8, Code::OP##_RM16_IMM8, Code::OP##_RM32_IMM8, Code::OP##_RM64_IMM8},        \
-    {Code::OP##_RM8_CL, Code::OP##_RM16_CL, Code::OP##_RM32_CL, Code::OP##_RM64_CL},                \
-    {Code::OP##_RM8_1, Code::OP##_RM16_1, Code::OP##_RM32_1, Code::OP##_RM64_1},                    \
+    {Code::OP##_rm8_imm8, Code::OP##_rm16_imm8, Code::OP##_rm32_imm8, Code::OP##_rm64_imm8},        \
+    {Code::OP##_rm8_CL, Code::OP##_rm16_CL, Code::OP##_rm32_CL, Code::OP##_rm64_CL},                \
+    {Code::OP##_rm8_1, Code::OP##_rm16_1, Code::OP##_rm32_1, Code::OP##_rm64_1},                    \
   }
 // SAL is the /4 alias of SHL and decodes to its own Code, so it needs its own entry to be reached.
 const std::array<ShiftCodes, 8> kShiftOps = {
-    SF_SH(SHL), SF_SH(SHR), SF_SH(SAR), SF_SH(ROL), SF_SH(ROR), SF_SH(RCL), SF_SH(RCR), SF_SH(SAL),
+    SF_SH(Shl), SF_SH(Shr), SF_SH(Sar), SF_SH(Rol), SF_SH(Ror), SF_SH(Rcl), SF_SH(Rcr), SF_SH(Sal),
 };
 #undef SF_SH
 
@@ -455,27 +454,27 @@ const std::array<ShiftCodes, 8> kShiftOps = {
     const int a = pick_reg_index(c.rng);
     if (use_one) {
       // iced still models the count as a second operand for these, it just has to be exactly 1.
-      auto one = InstructionFactory::with2(t.one[static_cast<std::size_t>(wi)], reg_of(w, a), 1);
+      auto one = Instruction::with2(t.one[static_cast<std::size_t>(wi)], reg_of(w, a), 1).value();
       set_imm8(one, 1, 1);
       return one;
     }
-    if (use_cl) return InstructionFactory::with2(t.cl[static_cast<std::size_t>(wi)], reg_of(w, a), Register::CL);
+    if (use_cl) return Instruction::with2(t.cl[static_cast<std::size_t>(wi)], reg_of(w, a), Register::CL).value();
     std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
     if (rand_int(c.rng, 0, 4) != 0) imm &= 0x3F;  // usually in-range; sometimes probe masking of the high bits
-    auto instr = InstructionFactory::with2(t.imm8[static_cast<std::size_t>(wi)], reg_of(w, a), imm);
+    auto instr = Instruction::with2(t.imm8[static_cast<std::size_t>(wi)], reg_of(w, a), imm).value();
     set_imm8(instr, 1, static_cast<std::uint64_t>(imm));
     return instr;
   }
   c.touches_memory = true;
   const std::int8_t disp = random_disp8(c.rng);
   if (use_one) {
-    auto one_mem = InstructionFactory::with2(t.one[static_cast<std::size_t>(wi)], mem_operand(disp), 1);
+    auto one_mem = Instruction::with2(t.one[static_cast<std::size_t>(wi)], mem_operand(disp), 1).value();
     set_imm8(one_mem, 1, 1);
     return one_mem;
   }
-  if (use_cl) return InstructionFactory::with2(t.cl[static_cast<std::size_t>(wi)], mem_operand(disp), Register::CL);
+  if (use_cl) return Instruction::with2(t.cl[static_cast<std::size_t>(wi)], mem_operand(disp), Register::CL).value();
   const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
-  auto shift_mem = InstructionFactory::with2(t.imm8[static_cast<std::size_t>(wi)], mem_operand(disp), imm);
+  auto shift_mem = Instruction::with2(t.imm8[static_cast<std::size_t>(wi)], mem_operand(disp), imm).value();
   set_imm8(shift_mem, 1, static_cast<std::uint64_t>(imm));
   return shift_mem;
 }
@@ -488,9 +487,9 @@ struct MovCodes {
   std::array<Code, 4> rm_imm;  // width64 entry is imm32 sign-extended, not imm64
 };
 const MovCodes kMov = {
-    {Code::MOV_RM8_R8, Code::MOV_RM16_R16, Code::MOV_RM32_R32, Code::MOV_RM64_R64},
-    {Code::MOV_R8_RM8, Code::MOV_R16_RM16, Code::MOV_R32_RM32, Code::MOV_R64_RM64},
-    {Code::MOV_RM8_IMM8, Code::MOV_RM16_IMM16, Code::MOV_RM32_IMM32, Code::MOV_RM64_IMM32},
+    {Code::Mov_rm8_r8, Code::Mov_rm16_r16, Code::Mov_rm32_r32, Code::Mov_rm64_r64},
+    {Code::Mov_r8_rm8, Code::Mov_r16_rm16, Code::Mov_r32_rm32, Code::Mov_r64_rm64},
+    {Code::Mov_rm8_imm8, Code::Mov_rm16_imm16, Code::Mov_rm32_imm32, Code::Mov_rm64_imm32},
 };
 
 [[nodiscard]] std::optional<Instruction> gen_mov(Ctx& c) {
@@ -500,18 +499,18 @@ const MovCodes kMov = {
 
   if (form == 0) {
     const int a = pick_reg_index(c.rng), b = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kMov.rm_r[static_cast<std::size_t>(wi)], reg_of(w, a), reg_of(w, b));
+    return Instruction::with2(kMov.rm_r[static_cast<std::size_t>(wi)], reg_of(w, a), reg_of(w, b)).value();
   }
   if (form == 1) {
     const int a = pick_reg_index(c.rng);
     if (w == Width::W64) {
       const std::uint64_t imm = random_interesting_u64(c.rng);
-      return InstructionFactory::with2(Code::MOV_R64_IMM64, reg_of(w, a), static_cast<std::int64_t>(imm));
+      return Instruction::with2(Code::Mov_r64_imm64, reg_of(w, a), static_cast<std::int64_t>(imm)).value();
     }
     const int bits = bits_of(w);
     const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, bits));
-    const Code code = w == Width::W8 ? Code::MOV_R8_IMM8 : w == Width::W16 ? Code::MOV_R16_IMM16 : Code::MOV_R32_IMM32;
-    auto instr = InstructionFactory::with2(code, reg_of(w, a), imm);
+    const Code code = w == Width::W8 ? Code::Mov_r8_imm8 : w == Width::W16 ? Code::Mov_r16_imm16 : Code::Mov_r32_imm32;
+    auto instr = Instruction::with2(code, reg_of(w, a), imm).value();
     set_imm_sized(instr, 1, w, false, static_cast<std::uint64_t>(imm));
     return instr;
   }
@@ -521,14 +520,14 @@ const MovCodes kMov = {
   const int mform = rand_int(c.rng, 0, 2);
   if (mform == 0) {
     const int r = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kMov.rm_r[static_cast<std::size_t>(wi)], mem_operand(disp), reg_of(w, r));
+    return Instruction::with2(kMov.rm_r[static_cast<std::size_t>(wi)], mem_operand(disp), reg_of(w, r)).value();
   }
   if (mform == 1) {
     const int r = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kMov.r_rm[static_cast<std::size_t>(wi)], reg_of(w, r), mem_operand(disp));
+    return Instruction::with2(kMov.r_rm[static_cast<std::size_t>(wi)], reg_of(w, r), mem_operand(disp)).value();
   }
   const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, w == Width::W8 ? 8 : w == Width::W16 ? 16 : 32));
-  auto mov_mem = InstructionFactory::with2(kMov.rm_imm[static_cast<std::size_t>(wi)], mem_operand(disp), imm);
+  auto mov_mem = Instruction::with2(kMov.rm_imm[static_cast<std::size_t>(wi)], mem_operand(disp), imm).value();
   set_imm_sized(mov_mem, 1, w, false, static_cast<std::uint64_t>(imm));
   return mov_mem;
 }
@@ -541,10 +540,10 @@ struct MovxCodes {
 };
 // order: {dst16<-src8, dst32<-src8, dst64<-src8, dst16<-src16, dst32<-src16, dst64<-src16}
 const MovxCodes kMovx = {
-    {Code::MOVZX_R16_RM8, Code::MOVZX_R32_RM8, Code::MOVZX_R64_RM8,
-     Code::MOVZX_R16_RM16, Code::MOVZX_R32_RM16, Code::MOVZX_R64_RM16},
-    {Code::MOVSX_R16_RM8, Code::MOVSX_R32_RM8, Code::MOVSX_R64_RM8,
-     Code::MOVSX_R16_RM16, Code::MOVSX_R32_RM16, Code::MOVSX_R64_RM16},
+    {Code::Movzx_r16_rm8, Code::Movzx_r32_rm8, Code::Movzx_r64_rm8,
+     Code::Movzx_r16_rm16, Code::Movzx_r32_rm16, Code::Movzx_r64_rm16},
+    {Code::Movsx_r16_rm8, Code::Movsx_r32_rm8, Code::Movsx_r64_rm8,
+     Code::Movsx_r16_rm16, Code::Movsx_r32_rm16, Code::Movsx_r64_rm16},
 };
 constexpr std::array<Width, 6> kMovxDstW = {Width::W16, Width::W32, Width::W64, Width::W16, Width::W32, Width::W64};
 constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Width::W16, Width::W16, Width::W16};
@@ -557,20 +556,20 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
   const int d = pick_reg_index(c.rng);
   if (rand_int(c.rng, 0, 1) == 0) {
     const int s = pick_reg_index(c.rng);
-    return InstructionFactory::with2(code, reg_of(dstw, d), reg_of(srcw, s));
+    return Instruction::with2(code, reg_of(dstw, d), reg_of(srcw, s)).value();
   }
   c.touches_memory = true;
-  return InstructionFactory::with2(code, reg_of(dstw, d), mem_operand(random_disp8(c.rng)));
+  return Instruction::with2(code, reg_of(dstw, d), mem_operand(random_disp8(c.rng))).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_movsxd(Ctx& c) {
   const int d = pick_reg_index(c.rng);
   if (rand_int(c.rng, 0, 1) == 0) {
     const int s = pick_reg_index(c.rng);
-    return InstructionFactory::with2(Code::MOVSXD_R64_RM32, reg_of(Width::W64, d), reg_of(Width::W32, s));
+    return Instruction::with2(Code::Movsxd_r64_rm32, reg_of(Width::W64, d), reg_of(Width::W32, s)).value();
   }
   c.touches_memory = true;
-  return InstructionFactory::with2(Code::MOVSXD_R64_RM32, reg_of(Width::W64, d), mem_operand(random_disp8(c.rng)));
+  return Instruction::with2(Code::Movsxd_r64_rm32, reg_of(Width::W64, d), mem_operand(random_disp8(c.rng))).value();
 }
 
 // ---------------------------------------------------------- stack/LEA/misc
@@ -578,7 +577,7 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
 [[nodiscard]] std::optional<Instruction> gen_pushpop(Ctx& c) {
   const bool is_push = rand_int(c.rng, 0, 1) == 0;
   const int r = pick_reg_index(c.rng);
-  return InstructionFactory::with1(is_push ? Code::PUSH_R64 : Code::POP_R64, reg_of(Width::W64, r));
+  return Instruction::with1(is_push ? Code::Push_r64 : Code::Pop_r64, reg_of(Width::W64, r)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_lea(Ctx& c) {
@@ -586,9 +585,9 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
   const int d = pick_reg_index(c.rng);
   // The destination width truncates the computed address, and each width is its own Code.
   const Width w = width16_32_64(c.rng);
-  static constexpr std::array<Code, 3> kLea = {Code::LEA_R16_M, Code::LEA_R32_M, Code::LEA_R64_M};
-  return InstructionFactory::with2(kLea[static_cast<std::size_t>(widx16_32_64(w))], reg_of(w, d),
-                                   mem_operand(random_disp8(c.rng)));
+  static constexpr std::array<Code, 3> kLea = {Code::Lea_r16_m, Code::Lea_r32_m, Code::Lea_r64_m};
+  return Instruction::with2(kLea[static_cast<std::size_t>(widx16_32_64(w))], reg_of(w, d),
+                                   mem_operand(random_disp8(c.rng))).value();
 }
 
 // MOVS/CMPS/SCAS/STOS/LODS. These are the only instructions whose direction depends on DF, they
@@ -614,10 +613,10 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
   // A rep prefix turns this into a loop, so the count has to stay small enough that every iteration
   // lands inside the window whichever way DF sends it.
   const int rep_pick = rand_int(c.rng, 0, 2);
-  const auto rep = rep_pick == 0   ? RepPrefixKind::NONE
-                   : rep_pick == 1 ? RepPrefixKind::REPE
-                                   : RepPrefixKind::REPNE;
-  if (rep != RepPrefixKind::NONE) {
+  const auto rep = rep_pick == 0   ? RepPrefixKind::None
+                   : rep_pick == 1 ? RepPrefixKind::Repe
+                                   : RepPrefixKind::Repne;
+  if (rep != RepPrefixKind::None) {
     // Only 0 or 1. A REP string instruction is architecturally interruptible between iterations,
     // and both oracles single-step it that way -- hardware traps after each iteration with TF set,
     // and Unicorn stops after one too -- while seven runs the whole loop inside one step(). With a
@@ -632,38 +631,38 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
   switch (family) {
     case 0:
       switch (wi) {
-        case 0: return InstructionFactory::with_movsb(kAddr64, Register::NONE, rep);
-        case 1: return InstructionFactory::with_movsw(kAddr64, Register::NONE, rep);
-        case 2: return InstructionFactory::with_movsd(kAddr64, Register::NONE, rep);
-        default: return InstructionFactory::with_movsq(kAddr64, Register::NONE, rep);
+        case 0: return Instruction::with_movsb(kAddr64, Register::None, rep).value();
+        case 1: return Instruction::with_movsw(kAddr64, Register::None, rep).value();
+        case 2: return Instruction::with_movsd(kAddr64, Register::None, rep).value();
+        default: return Instruction::with_movsq(kAddr64, Register::None, rep).value();
       }
     case 1:
       switch (wi) {
-        case 0: return InstructionFactory::with_cmpsb(kAddr64, Register::NONE, rep);
-        case 1: return InstructionFactory::with_cmpsw(kAddr64, Register::NONE, rep);
-        case 2: return InstructionFactory::with_cmpsd(kAddr64, Register::NONE, rep);
-        default: return InstructionFactory::with_cmpsq(kAddr64, Register::NONE, rep);
+        case 0: return Instruction::with_cmpsb(kAddr64, Register::None, rep).value();
+        case 1: return Instruction::with_cmpsw(kAddr64, Register::None, rep).value();
+        case 2: return Instruction::with_cmpsd(kAddr64, Register::None, rep).value();
+        default: return Instruction::with_cmpsq(kAddr64, Register::None, rep).value();
       }
     case 2:
       switch (wi) {
-        case 0: return InstructionFactory::with_scasb(kAddr64, rep);
-        case 1: return InstructionFactory::with_scasw(kAddr64, rep);
-        case 2: return InstructionFactory::with_scasd(kAddr64, rep);
-        default: return InstructionFactory::with_scasq(kAddr64, rep);
+        case 0: return Instruction::with_scasb(kAddr64, rep).value();
+        case 1: return Instruction::with_scasw(kAddr64, rep).value();
+        case 2: return Instruction::with_scasd(kAddr64, rep).value();
+        default: return Instruction::with_scasq(kAddr64, rep).value();
       }
     case 3:
       switch (wi) {
-        case 0: return InstructionFactory::with_stosb(kAddr64, rep);
-        case 1: return InstructionFactory::with_stosw(kAddr64, rep);
-        case 2: return InstructionFactory::with_stosd(kAddr64, rep);
-        default: return InstructionFactory::with_stosq(kAddr64, rep);
+        case 0: return Instruction::with_stosb(kAddr64, rep).value();
+        case 1: return Instruction::with_stosw(kAddr64, rep).value();
+        case 2: return Instruction::with_stosd(kAddr64, rep).value();
+        default: return Instruction::with_stosq(kAddr64, rep).value();
       }
     default:
       switch (wi) {
-        case 0: return InstructionFactory::with_lodsb(kAddr64, Register::NONE, rep);
-        case 1: return InstructionFactory::with_lodsw(kAddr64, Register::NONE, rep);
-        case 2: return InstructionFactory::with_lodsd(kAddr64, Register::NONE, rep);
-        default: return InstructionFactory::with_lodsq(kAddr64, Register::NONE, rep);
+        case 0: return Instruction::with_lodsb(kAddr64, Register::None, rep).value();
+        case 1: return Instruction::with_lodsw(kAddr64, Register::None, rep).value();
+        case 2: return Instruction::with_lodsd(kAddr64, Register::None, rep).value();
+        default: return Instruction::with_lodsq(kAddr64, Register::None, rep).value();
       }
   }
 }
@@ -674,10 +673,10 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
 [[nodiscard]] std::optional<Instruction> gen_moffs(Ctx& c) {
   c.flags_mask = 0;  // MOV defines no flags
   c.touches_memory = true;
-  static constexpr std::array<Code, 4> kLoad = {Code::MOV_AL_MOFFS8, Code::MOV_AX_MOFFS16,
-                                                 Code::MOV_EAX_MOFFS32, Code::MOV_RAX_MOFFS64};
-  static constexpr std::array<Code, 4> kStore = {Code::MOV_MOFFS8_AL, Code::MOV_MOFFS16_AX,
-                                                  Code::MOV_MOFFS32_EAX, Code::MOV_MOFFS64_RAX};
+  static constexpr std::array<Code, 4> kLoad = {Code::Mov_AL_moffs8, Code::Mov_AX_moffs16,
+                                                 Code::Mov_EAX_moffs32, Code::Mov_RAX_moffs64};
+  static constexpr std::array<Code, 4> kStore = {Code::Mov_moffs8_AL, Code::Mov_moffs16_AX,
+                                                  Code::Mov_moffs32_EAX, Code::Mov_moffs64_RAX};
   const Width w = static_cast<Width>(rand_int(c.rng, 0, 3));
   const auto wu = static_cast<std::size_t>(w);
   const Register acc = w == Width::W8    ? Register::AL
@@ -687,8 +686,8 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
   // Keep the whole access inside the compared scratch window.
   const auto offset = static_cast<std::uint64_t>(rand_int(c.rng, 0, 15)) * 8;
   const auto addr = MemoryOperand::with_displ(kDataBase + offset, 8);
-  return rand_int(c.rng, 0, 1) == 0 ? InstructionFactory::with2(kLoad[wu], acc, addr)
-                                     : InstructionFactory::with2(kStore[wu], addr, acc);
+  return rand_int(c.rng, 0, 1) == 0 ? Instruction::with2(kLoad[wu], acc, addr).value()
+                                     : Instruction::with2(kStore[wu], addr, acc).value();
 }
 
 // MOVBE byte-swaps on the way to or from memory, CRC32 accumulates the SSE4.2 polynomial, and the
@@ -702,14 +701,14 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
     const Width w = width16_32_64(c.rng);
     const auto wu = static_cast<std::size_t>(widx16_32_64(w));
     const int r = pick_reg_index(c.rng);
-    static constexpr std::array<Code, 3> kLoad = {Code::MOVBE_R16_M16, Code::MOVBE_R32_M32,
-                                                   Code::MOVBE_R64_M64};
-    static constexpr std::array<Code, 3> kStore = {Code::MOVBE_M16_R16, Code::MOVBE_M32_R32,
-                                                    Code::MOVBE_M64_R64};
+    static constexpr std::array<Code, 3> kLoad = {Code::Movbe_r16_m16, Code::Movbe_r32_m32,
+                                                   Code::Movbe_r64_m64};
+    static constexpr std::array<Code, 3> kStore = {Code::Movbe_m16_r16, Code::Movbe_m32_r32,
+                                                    Code::Movbe_m64_r64};
     const std::int8_t disp = random_disp8(c.rng);
     return rand_int(c.rng, 0, 1) == 0
-        ? InstructionFactory::with2(kLoad[wu], reg_of(w, r), mem_operand(disp))
-        : InstructionFactory::with2(kStore[wu], mem_operand(disp), reg_of(w, r));
+        ? Instruction::with2(kLoad[wu], reg_of(w, r), mem_operand(disp)).value()
+        : Instruction::with2(kStore[wu], mem_operand(disp), reg_of(w, r)).value();
   }
   if (pick == 1) {
     c.flags_mask = 0;  // CRC32 defines no flags
@@ -719,70 +718,70 @@ constexpr std::array<Width, 6> kMovxSrcW = {Width::W8, Width::W8, Width::W8, Wid
     const bool dest64 = rand_int(c.rng, 0, 1) == 0;
     const Width sw = dest64 ? (rand_int(c.rng, 0, 1) == 0 ? Width::W8 : Width::W64)
                             : static_cast<Width>(rand_int(c.rng, 0, 2));
-    Code code = Code::CRC32_R32_RM8;
+    Code code = Code::Crc32_r32_rm8;
     if (dest64) {
-      code = sw == Width::W8 ? Code::CRC32_R64_RM8 : Code::CRC32_R64_RM64;
+      code = sw == Width::W8 ? Code::Crc32_r64_rm8 : Code::Crc32_r64_rm64;
     } else {
-      code = sw == Width::W8 ? Code::CRC32_R32_RM8 : sw == Width::W16 ? Code::CRC32_R32_RM16
-                                                                      : Code::CRC32_R32_RM32;
+      code = sw == Width::W8 ? Code::Crc32_r32_rm8 : sw == Width::W16 ? Code::Crc32_r32_rm16
+                                                                      : Code::Crc32_r32_rm32;
     }
     const Width dw = dest64 ? Width::W64 : Width::W32;
     if (rand_int(c.rng, 0, 2) == 0) {
       c.touches_memory = true;
-      return InstructionFactory::with2(code, reg_of(dw, d), mem_operand(random_disp8(c.rng)));
+      return Instruction::with2(code, reg_of(dw, d), mem_operand(random_disp8(c.rng))).value();
     }
-    return InstructionFactory::with2(code, reg_of(dw, d), reg_of(sw, src));
+    return Instruction::with2(code, reg_of(dw, d), reg_of(sw, src)).value();
   }
   c.flags_mask = 0;
   const Width w = width16_32_64(c.rng);
-  static constexpr std::array<Code, 3> kNop = {Code::NOP_RM16, Code::NOP_RM32, Code::NOP_RM64};
+  static constexpr std::array<Code, 3> kNop = {Code::Nop_rm16, Code::Nop_rm32, Code::Nop_rm64};
   const Code code = kNop[static_cast<std::size_t>(widx16_32_64(w))];
   if (rand_int(c.rng, 0, 1) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with1(code, mem_operand(random_disp8(c.rng)));
+    return Instruction::with1(code, mem_operand(random_disp8(c.rng))).value();
   }
-  return InstructionFactory::with1(code, reg_of(w, pick_reg_index(c.rng)));
+  return Instruction::with1(code, reg_of(w, pick_reg_index(c.rng))).value();
 }
 
 // --------------------------------------------------------- branches/Jcc
 
 constexpr std::array<Code, 16> kJcc = {
-    Code::JO_REL8_64, Code::JNO_REL8_64, Code::JB_REL8_64, Code::JAE_REL8_64,
-    Code::JE_REL8_64, Code::JNE_REL8_64, Code::JBE_REL8_64, Code::JA_REL8_64,
-    Code::JS_REL8_64, Code::JNS_REL8_64, Code::JP_REL8_64, Code::JNP_REL8_64,
-    Code::JL_REL8_64, Code::JGE_REL8_64, Code::JLE_REL8_64, Code::JG_REL8_64,
+    Code::Jo_rel8_64, Code::Jno_rel8_64, Code::Jb_rel8_64, Code::Jae_rel8_64,
+    Code::Je_rel8_64, Code::Jne_rel8_64, Code::Jbe_rel8_64, Code::Ja_rel8_64,
+    Code::Js_rel8_64, Code::Jns_rel8_64, Code::Jp_rel8_64, Code::Jnp_rel8_64,
+    Code::Jl_rel8_64, Code::Jge_rel8_64, Code::Jle_rel8_64, Code::Jg_rel8_64,
 };
 // Same condition order as kJcc. The rel32 forms are a separate Code entirely, and the encoder
 // never shrinks one into the other, so both have to be asked for by name to get covered.
 constexpr std::array<Code, 16> kJcc32 = {
-    Code::JO_REL32_64, Code::JNO_REL32_64, Code::JB_REL32_64, Code::JAE_REL32_64,
-    Code::JE_REL32_64, Code::JNE_REL32_64, Code::JBE_REL32_64, Code::JA_REL32_64,
-    Code::JS_REL32_64, Code::JNS_REL32_64, Code::JP_REL32_64, Code::JNP_REL32_64,
-    Code::JL_REL32_64, Code::JGE_REL32_64, Code::JLE_REL32_64, Code::JG_REL32_64,
+    Code::Jo_rel32_64, Code::Jno_rel32_64, Code::Jb_rel32_64, Code::Jae_rel32_64,
+    Code::Je_rel32_64, Code::Jne_rel32_64, Code::Jbe_rel32_64, Code::Ja_rel32_64,
+    Code::Js_rel32_64, Code::Jns_rel32_64, Code::Jp_rel32_64, Code::Jnp_rel32_64,
+    Code::Jl_rel32_64, Code::Jge_rel32_64, Code::Jle_rel32_64, Code::Jg_rel32_64,
 };
 constexpr std::array<Code, 16> kSetcc = {
-    Code::SETO_RM8, Code::SETNO_RM8, Code::SETB_RM8, Code::SETAE_RM8,
-    Code::SETE_RM8, Code::SETNE_RM8, Code::SETBE_RM8, Code::SETA_RM8,
-    Code::SETS_RM8, Code::SETNS_RM8, Code::SETP_RM8, Code::SETNP_RM8,
-    Code::SETL_RM8, Code::SETGE_RM8, Code::SETLE_RM8, Code::SETG_RM8,
+    Code::Seto_rm8, Code::Setno_rm8, Code::Setb_rm8, Code::Setae_rm8,
+    Code::Sete_rm8, Code::Setne_rm8, Code::Setbe_rm8, Code::Seta_rm8,
+    Code::Sets_rm8, Code::Setns_rm8, Code::Setp_rm8, Code::Setnp_rm8,
+    Code::Setl_rm8, Code::Setge_rm8, Code::Setle_rm8, Code::Setg_rm8,
 };
 constexpr std::array<Code, 16> kCmov16 = {
-    Code::CMOVO_R16_RM16, Code::CMOVNO_R16_RM16, Code::CMOVB_R16_RM16, Code::CMOVAE_R16_RM16,
-    Code::CMOVE_R16_RM16, Code::CMOVNE_R16_RM16, Code::CMOVBE_R16_RM16, Code::CMOVA_R16_RM16,
-    Code::CMOVS_R16_RM16, Code::CMOVNS_R16_RM16, Code::CMOVP_R16_RM16, Code::CMOVNP_R16_RM16,
-    Code::CMOVL_R16_RM16, Code::CMOVGE_R16_RM16, Code::CMOVLE_R16_RM16, Code::CMOVG_R16_RM16,
+    Code::Cmovo_r16_rm16, Code::Cmovno_r16_rm16, Code::Cmovb_r16_rm16, Code::Cmovae_r16_rm16,
+    Code::Cmove_r16_rm16, Code::Cmovne_r16_rm16, Code::Cmovbe_r16_rm16, Code::Cmova_r16_rm16,
+    Code::Cmovs_r16_rm16, Code::Cmovns_r16_rm16, Code::Cmovp_r16_rm16, Code::Cmovnp_r16_rm16,
+    Code::Cmovl_r16_rm16, Code::Cmovge_r16_rm16, Code::Cmovle_r16_rm16, Code::Cmovg_r16_rm16,
 };
 constexpr std::array<Code, 16> kCmov32 = {
-    Code::CMOVO_R32_RM32, Code::CMOVNO_R32_RM32, Code::CMOVB_R32_RM32, Code::CMOVAE_R32_RM32,
-    Code::CMOVE_R32_RM32, Code::CMOVNE_R32_RM32, Code::CMOVBE_R32_RM32, Code::CMOVA_R32_RM32,
-    Code::CMOVS_R32_RM32, Code::CMOVNS_R32_RM32, Code::CMOVP_R32_RM32, Code::CMOVNP_R32_RM32,
-    Code::CMOVL_R32_RM32, Code::CMOVGE_R32_RM32, Code::CMOVLE_R32_RM32, Code::CMOVG_R32_RM32,
+    Code::Cmovo_r32_rm32, Code::Cmovno_r32_rm32, Code::Cmovb_r32_rm32, Code::Cmovae_r32_rm32,
+    Code::Cmove_r32_rm32, Code::Cmovne_r32_rm32, Code::Cmovbe_r32_rm32, Code::Cmova_r32_rm32,
+    Code::Cmovs_r32_rm32, Code::Cmovns_r32_rm32, Code::Cmovp_r32_rm32, Code::Cmovnp_r32_rm32,
+    Code::Cmovl_r32_rm32, Code::Cmovge_r32_rm32, Code::Cmovle_r32_rm32, Code::Cmovg_r32_rm32,
 };
 constexpr std::array<Code, 16> kCmov64 = {
-    Code::CMOVO_R64_RM64, Code::CMOVNO_R64_RM64, Code::CMOVB_R64_RM64, Code::CMOVAE_R64_RM64,
-    Code::CMOVE_R64_RM64, Code::CMOVNE_R64_RM64, Code::CMOVBE_R64_RM64, Code::CMOVA_R64_RM64,
-    Code::CMOVS_R64_RM64, Code::CMOVNS_R64_RM64, Code::CMOVP_R64_RM64, Code::CMOVNP_R64_RM64,
-    Code::CMOVL_R64_RM64, Code::CMOVGE_R64_RM64, Code::CMOVLE_R64_RM64, Code::CMOVG_R64_RM64,
+    Code::Cmovo_r64_rm64, Code::Cmovno_r64_rm64, Code::Cmovb_r64_rm64, Code::Cmovae_r64_rm64,
+    Code::Cmove_r64_rm64, Code::Cmovne_r64_rm64, Code::Cmovbe_r64_rm64, Code::Cmova_r64_rm64,
+    Code::Cmovs_r64_rm64, Code::Cmovns_r64_rm64, Code::Cmovp_r64_rm64, Code::Cmovnp_r64_rm64,
+    Code::Cmovl_r64_rm64, Code::Cmovge_r64_rm64, Code::Cmovle_r64_rm64, Code::Cmovg_r64_rm64,
 };
 
 // Branch targets are kept inside the mapped, executable code page. If a
@@ -798,56 +797,56 @@ constexpr std::array<Code, 16> kCmov64 = {
     // rel8 reach: stay comfortably inside +/-127 of kCodeBase regardless of
     // this instruction's own length.
     const auto target = kCodeBase + static_cast<std::uint64_t>(rand_int(c.rng, 2, 120));
-    return InstructionFactory::with_branch(kJcc[which], target);
+    return Instruction::with_branch(kJcc[which], target).value();
   }
-  return InstructionFactory::with_branch(kJcc32[which], random_code_target(c.rng));
+  return Instruction::with_branch(kJcc32[which], random_code_target(c.rng)).value();
 }
 [[nodiscard]] std::optional<Instruction> gen_jmp(Ctx& c) {
   switch (rand_int(c.rng, 0, 3)) {
     case 0: {
       const auto target = kCodeBase + static_cast<std::uint64_t>(rand_int(c.rng, 2, 120));
-      return InstructionFactory::with_branch(Code::JMP_REL8_64, target);
+      return Instruction::with_branch(Code::Jmp_rel8_64, target).value();
     }
     case 1:
-      return InstructionFactory::with_branch(Code::JMP_REL32_64, random_code_target(c.rng));
+      return Instruction::with_branch(Code::Jmp_rel32_64, random_code_target(c.rng)).value();
     case 2: {
       const int r = pick_reg_index(c.rng);
       c.force_gpr[static_cast<std::size_t>(r)] = random_code_target(c.rng);
-      return InstructionFactory::with1(Code::JMP_RM64, reg_of(Width::W64, r));
+      return Instruction::with1(Code::Jmp_rm64, reg_of(Width::W64, r)).value();
     }
     default: {
       const std::int8_t disp = indirect_target_disp(c);
       c.touches_memory = true;
-      return InstructionFactory::with1(Code::JMP_RM64, mem_operand(disp));
+      return Instruction::with1(Code::Jmp_rm64, mem_operand(disp)).value();
     }
   }
 }
 [[nodiscard]] std::optional<Instruction> gen_call(Ctx& c) {
   switch (rand_int(c.rng, 0, 2)) {
     case 0:
-      return InstructionFactory::with_branch(Code::CALL_REL32_64, random_code_target(c.rng));
+      return Instruction::with_branch(Code::Call_rel32_64, random_code_target(c.rng)).value();
     case 1: {
       const int r = pick_reg_index(c.rng);
       // RSP is pinned to the harness stack top; overwriting it with a code address would send the
       // pushed return address somewhere unmapped instead of exercising the call itself.
       if (r == 4) { return std::nullopt; }
       c.force_gpr[static_cast<std::size_t>(r)] = random_code_target(c.rng);
-      return InstructionFactory::with1(Code::CALL_RM64, reg_of(Width::W64, r));
+      return Instruction::with1(Code::Call_rm64, reg_of(Width::W64, r)).value();
     }
     default: {
       const std::int8_t disp = indirect_target_disp(c);
       c.touches_memory = true;
-      return InstructionFactory::with1(Code::CALL_RM64, mem_operand(disp));
+      return Instruction::with1(Code::Call_rm64, mem_operand(disp)).value();
     }
   }
 }
 [[nodiscard]] std::optional<Instruction> gen_ret(Ctx& c) {
-  if (rand_int(c.rng, 0, 1) == 0) { return InstructionFactory::with(Code::RETNQ); }
+  if (rand_int(c.rng, 0, 1) == 0) { return Instruction::with(Code::Retnq); }
   // Small, aligned pop counts only: the harness stack has 0x0F00 bytes of headroom above RSP, and
   // a random imm16 would walk RSP off the mapped page for reasons that have nothing to do with RET.
   const auto pop_bytes = rand_int(c.rng, 0, 32) * 8;
-  auto instr = InstructionFactory::with1(Code::RETNQ_IMM16, pop_bytes);
-  set_imm_kind(instr, 0, OpKind::IMMEDIATE16);
+  auto instr = Instruction::with1(Code::Retnq_imm16, pop_bytes).value();
+  set_imm_kind(instr, 0, OpKind::Immediate16);
   instr.set_immediate16(static_cast<std::uint16_t>(pop_bytes));
   return instr;
 }
@@ -855,8 +854,8 @@ constexpr std::array<Code, 16> kCmov64 = {
 // LOOP/JRCXZ read (and LOOP writes) the count register but define no flags at all, which makes
 // them a clean check that a branch family isn't clobbering flags on the side.
 constexpr std::array<Code, 6> kLoop = {
-    Code::LOOP_REL8_64_RCX,   Code::LOOP_REL8_64_ECX,   Code::LOOPE_REL8_64_RCX,
-    Code::LOOPE_REL8_64_ECX,  Code::LOOPNE_REL8_64_RCX, Code::LOOPNE_REL8_64_ECX,
+    Code::Loop_rel8_64_RCX,   Code::Loop_rel8_64_ECX,   Code::Loope_rel8_64_RCX,
+    Code::Loope_rel8_64_ECX,  Code::Loopne_rel8_64_RCX, Code::Loopne_rel8_64_ECX,
 };
 
 [[nodiscard]] std::optional<Instruction> gen_loop(Ctx& c) {
@@ -867,19 +866,19 @@ constexpr std::array<Code, 6> kLoop = {
   if (rand_int(c.rng, 0, 1) == 0) {
     c.force_gpr[1] = static_cast<std::uint64_t>(rand_int(c.rng, 0, 3));
   }
-  if (pick == 6) { return InstructionFactory::with_branch(Code::JRCXZ_REL8_64, target); }
-  if (pick == 7) { return InstructionFactory::with_branch(Code::JECXZ_REL8_64, target); }
-  return InstructionFactory::with_branch(kLoop[static_cast<std::size_t>(pick)], target);
+  if (pick == 6) { return Instruction::with_branch(Code::Jrcxz_rel8_64, target).value(); }
+  if (pick == 7) { return Instruction::with_branch(Code::Jecxz_rel8_64, target).value(); }
+  return Instruction::with_branch(kLoop[static_cast<std::size_t>(pick)], target).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_setcc(Ctx& c) {
   const Code code = kSetcc[static_cast<std::size_t>(rand_int(c.rng, 0, 15))];
   if (rand_int(c.rng, 0, 1) == 0) {
     const int r = pick_reg_index(c.rng);
-    return InstructionFactory::with1(code, reg_of(Width::W8, r));
+    return Instruction::with1(code, reg_of(Width::W8, r)).value();
   }
   c.touches_memory = true;
-  return InstructionFactory::with1(code, mem_operand(random_disp8(c.rng)));
+  return Instruction::with1(code, mem_operand(random_disp8(c.rng))).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_cmovcc(Ctx& c) {
@@ -892,10 +891,10 @@ constexpr std::array<Code, 6> kLoop = {
   const int d = pick_reg_index(c.rng);
   if (rand_int(c.rng, 0, 1) == 0) {
     const int s = pick_reg_index(c.rng);
-    return InstructionFactory::with2(code, reg_of(w, d), reg_of(w, s));
+    return Instruction::with2(code, reg_of(w, d), reg_of(w, s)).value();
   }
   c.touches_memory = true;
-  return InstructionFactory::with2(code, reg_of(w, d), mem_operand(random_disp8(c.rng)));
+  return Instruction::with2(code, reg_of(w, d), mem_operand(random_disp8(c.rng))).value();
 }
 
 // -------------------------------------------------------------- BT family
@@ -904,14 +903,14 @@ struct BtCodes {
   std::array<Code, 3> rm_r;    // 16,32,64
   std::array<Code, 3> rm_imm;  // 16,32,64
 };
-const BtCodes kBt = {{Code::BT_RM16_R16, Code::BT_RM32_R32, Code::BT_RM64_R64},
-                      {Code::BT_RM16_IMM8, Code::BT_RM32_IMM8, Code::BT_RM64_IMM8}};
-const BtCodes kBts = {{Code::BTS_RM16_R16, Code::BTS_RM32_R32, Code::BTS_RM64_R64},
-                       {Code::BTS_RM16_IMM8, Code::BTS_RM32_IMM8, Code::BTS_RM64_IMM8}};
-const BtCodes kBtr = {{Code::BTR_RM16_R16, Code::BTR_RM32_R32, Code::BTR_RM64_R64},
-                       {Code::BTR_RM16_IMM8, Code::BTR_RM32_IMM8, Code::BTR_RM64_IMM8}};
-const BtCodes kBtc = {{Code::BTC_RM16_R16, Code::BTC_RM32_R32, Code::BTC_RM64_R64},
-                       {Code::BTC_RM16_IMM8, Code::BTC_RM32_IMM8, Code::BTC_RM64_IMM8}};
+const BtCodes kBt = {{Code::Bt_rm16_r16, Code::Bt_rm32_r32, Code::Bt_rm64_r64},
+                      {Code::Bt_rm16_imm8, Code::Bt_rm32_imm8, Code::Bt_rm64_imm8}};
+const BtCodes kBts = {{Code::Bts_rm16_r16, Code::Bts_rm32_r32, Code::Bts_rm64_r64},
+                       {Code::Bts_rm16_imm8, Code::Bts_rm32_imm8, Code::Bts_rm64_imm8}};
+const BtCodes kBtr = {{Code::Btr_rm16_r16, Code::Btr_rm32_r32, Code::Btr_rm64_r64},
+                       {Code::Btr_rm16_imm8, Code::Btr_rm32_imm8, Code::Btr_rm64_imm8}};
+const BtCodes kBtc = {{Code::Btc_rm16_r16, Code::Btc_rm32_r32, Code::Btc_rm64_r64},
+                       {Code::Btc_rm16_imm8, Code::Btc_rm32_imm8, Code::Btc_rm64_imm8}};
 const std::array<const BtCodes*, 4> kBtFamily = {&kBt, &kBts, &kBtr, &kBtc};
 
 [[nodiscard]] std::optional<Instruction> gen_bt(Ctx& c) {
@@ -927,23 +926,23 @@ const std::array<const BtCodes*, 4> kBtFamily = {&kBt, &kBts, &kBtr, &kBtc};
     const int a = pick_reg_index(c.rng);
     if (use_imm) {
       const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
-      auto instr = InstructionFactory::with2(t.rm_imm[wi], reg_of(w, a), imm);
+      auto instr = Instruction::with2(t.rm_imm[wi], reg_of(w, a), imm).value();
       set_imm8(instr, 1, static_cast<std::uint64_t>(imm));
       return instr;
     }
     const int b = pick_reg_index(c.rng);
-    return InstructionFactory::with2(t.rm_r[wi], reg_of(w, a), reg_of(w, b));
+    return Instruction::with2(t.rm_r[wi], reg_of(w, a), reg_of(w, b)).value();
   }
   c.touches_memory = true;
   const std::int8_t disp = random_disp8(c.rng);
   if (use_imm) {
     const std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
-    auto instr = InstructionFactory::with2(t.rm_imm[wi], mem_operand(disp), imm);
+    auto instr = Instruction::with2(t.rm_imm[wi], mem_operand(disp), imm).value();
     set_imm8(instr, 1, static_cast<std::uint64_t>(imm));
     return instr;
   }
   const int b = pick_reg_index(c.rng);
-  return InstructionFactory::with2(t.rm_r[wi], mem_operand(disp), reg_of(w, b));
+  return Instruction::with2(t.rm_r[wi], mem_operand(disp), reg_of(w, b)).value();
 }
 
 // ---------------------------------------------------- BSF/BSR/POPCNT/etc.
@@ -951,11 +950,11 @@ const std::array<const BtCodes*, 4> kBtFamily = {&kBt, &kBts, &kBtr, &kBtc};
 struct RmSrcCodes {
   std::array<Code, 3> code;  // 16,32,64
 };
-const RmSrcCodes kBsf = {{Code::BSF_R16_RM16, Code::BSF_R32_RM32, Code::BSF_R64_RM64}};
-const RmSrcCodes kBsr = {{Code::BSR_R16_RM16, Code::BSR_R32_RM32, Code::BSR_R64_RM64}};
-const RmSrcCodes kPopcnt = {{Code::POPCNT_R16_RM16, Code::POPCNT_R32_RM32, Code::POPCNT_R64_RM64}};
-const RmSrcCodes kLzcnt = {{Code::LZCNT_R16_RM16, Code::LZCNT_R32_RM32, Code::LZCNT_R64_RM64}};
-const RmSrcCodes kTzcnt = {{Code::TZCNT_R16_RM16, Code::TZCNT_R32_RM32, Code::TZCNT_R64_RM64}};
+const RmSrcCodes kBsf = {{Code::Bsf_r16_rm16, Code::Bsf_r32_rm32, Code::Bsf_r64_rm64}};
+const RmSrcCodes kBsr = {{Code::Bsr_r16_rm16, Code::Bsr_r32_rm32, Code::Bsr_r64_rm64}};
+const RmSrcCodes kPopcnt = {{Code::Popcnt_r16_rm16, Code::Popcnt_r32_rm32, Code::Popcnt_r64_rm64}};
+const RmSrcCodes kLzcnt = {{Code::Lzcnt_r16_rm16, Code::Lzcnt_r32_rm32, Code::Lzcnt_r64_rm64}};
+const RmSrcCodes kTzcnt = {{Code::Tzcnt_r16_rm16, Code::Tzcnt_r32_rm32, Code::Tzcnt_r64_rm64}};
 const std::array<const RmSrcCodes*, 5> kRmSrcFamily = {&kBsf, &kBsr, &kPopcnt, &kLzcnt, &kTzcnt};
 
 [[nodiscard]] std::optional<Instruction> gen_rmsrc(Ctx& c) {
@@ -977,7 +976,7 @@ const std::array<const RmSrcCodes*, 5> kRmSrcFamily = {&kBsf, &kBsr, &kPopcnt, &
       c.bsf_bsr_src_reg = s;
       c.bsf_bsr_width_bytes = bits_of(w) / 8;
     }
-    return InstructionFactory::with2(t.code[wi], reg_of(w, d), reg_of(w, s));
+    return Instruction::with2(t.code[wi], reg_of(w, d), reg_of(w, s)).value();
   }
   c.touches_memory = true;
   const std::int8_t disp = random_disp8(c.rng);
@@ -986,13 +985,13 @@ const std::array<const RmSrcCodes*, 5> kRmSrcFamily = {&kBsf, &kBsr, &kPopcnt, &
     c.bsf_bsr_src_mem_disp = disp;
     c.bsf_bsr_width_bytes = bits_of(w) / 8;
   }
-  return InstructionFactory::with2(t.code[wi], reg_of(w, d), mem_operand(disp));
+  return Instruction::with2(t.code[wi], reg_of(w, d), mem_operand(disp)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_bswap(Ctx& c) {
   const bool w64 = rand_int(c.rng, 0, 1) == 0;
   const int r = pick_reg_index(c.rng);
-  return InstructionFactory::with1(w64 ? Code::BSWAP_R64 : Code::BSWAP_R32, reg_of(w64 ? Width::W64 : Width::W32, r));
+  return Instruction::with1(w64 ? Code::Bswap_r64 : Code::Bswap_r32, reg_of(w64 ? Width::W64 : Width::W32, r)).value();
 }
 
 // ------------------------------------------------------------------- BMI1/BMI2
@@ -1012,19 +1011,19 @@ struct BmiEntry {
 };
 
 const std::array<BmiEntry, 13> kBmi = {{
-    {{Code::VEX_ANDN_R32_R32_RM32, Code::VEX_ANDN_R64_R64_RM64}, BmiShape::kDstSrcRm, true},
-    {{Code::VEX_BEXTR_R32_RM32_R32, Code::VEX_BEXTR_R64_RM64_R64}, BmiShape::kDstRmSrc, true},
-    {{Code::VEX_BLSI_R32_RM32, Code::VEX_BLSI_R64_RM64}, BmiShape::kDstRm, true},
-    {{Code::VEX_BLSMSK_R32_RM32, Code::VEX_BLSMSK_R64_RM64}, BmiShape::kDstRm, true},
-    {{Code::VEX_BLSR_R32_RM32, Code::VEX_BLSR_R64_RM64}, BmiShape::kDstRm, true},
-    {{Code::VEX_BZHI_R32_RM32_R32, Code::VEX_BZHI_R64_RM64_R64}, BmiShape::kDstRmSrc, true},
-    {{Code::VEX_PDEP_R32_R32_RM32, Code::VEX_PDEP_R64_R64_RM64}, BmiShape::kDstSrcRm, false},
-    {{Code::VEX_PEXT_R32_R32_RM32, Code::VEX_PEXT_R64_R64_RM64}, BmiShape::kDstSrcRm, false},
-    {{Code::VEX_MULX_R32_R32_RM32, Code::VEX_MULX_R64_R64_RM64}, BmiShape::kDstSrcRm, false},
-    {{Code::VEX_RORX_R32_RM32_IMM8, Code::VEX_RORX_R64_RM64_IMM8}, BmiShape::kDstRmImm, false},
-    {{Code::VEX_SARX_R32_RM32_R32, Code::VEX_SARX_R64_RM64_R64}, BmiShape::kDstRmSrc, false},
-    {{Code::VEX_SHLX_R32_RM32_R32, Code::VEX_SHLX_R64_RM64_R64}, BmiShape::kDstRmSrc, false},
-    {{Code::VEX_SHRX_R32_RM32_R32, Code::VEX_SHRX_R64_RM64_R64}, BmiShape::kDstRmSrc, false},
+    {{Code::VEX_Andn_r32_r32_rm32, Code::VEX_Andn_r64_r64_rm64}, BmiShape::kDstSrcRm, true},
+    {{Code::VEX_Bextr_r32_rm32_r32, Code::VEX_Bextr_r64_rm64_r64}, BmiShape::kDstRmSrc, true},
+    {{Code::VEX_Blsi_r32_rm32, Code::VEX_Blsi_r64_rm64}, BmiShape::kDstRm, true},
+    {{Code::VEX_Blsmsk_r32_rm32, Code::VEX_Blsmsk_r64_rm64}, BmiShape::kDstRm, true},
+    {{Code::VEX_Blsr_r32_rm32, Code::VEX_Blsr_r64_rm64}, BmiShape::kDstRm, true},
+    {{Code::VEX_Bzhi_r32_rm32_r32, Code::VEX_Bzhi_r64_rm64_r64}, BmiShape::kDstRmSrc, true},
+    {{Code::VEX_Pdep_r32_r32_rm32, Code::VEX_Pdep_r64_r64_rm64}, BmiShape::kDstSrcRm, false},
+    {{Code::VEX_Pext_r32_r32_rm32, Code::VEX_Pext_r64_r64_rm64}, BmiShape::kDstSrcRm, false},
+    {{Code::VEX_Mulx_r32_r32_rm32, Code::VEX_Mulx_r64_r64_rm64}, BmiShape::kDstSrcRm, false},
+    {{Code::VEX_Rorx_r32_rm32_imm8, Code::VEX_Rorx_r64_rm64_imm8}, BmiShape::kDstRmImm, false},
+    {{Code::VEX_Sarx_r32_rm32_r32, Code::VEX_Sarx_r64_rm64_r64}, BmiShape::kDstRmSrc, false},
+    {{Code::VEX_Shlx_r32_rm32_r32, Code::VEX_Shlx_r64_rm64_r64}, BmiShape::kDstRmSrc, false},
+    {{Code::VEX_Shrx_r32_rm32_r32, Code::VEX_Shrx_r64_rm64_r64}, BmiShape::kDstRmSrc, false},
 }};
 
 [[nodiscard]] std::optional<Instruction> gen_bmi(Ctx& c) {
@@ -1043,17 +1042,17 @@ const std::array<BmiEntry, 13> kBmi = {{
   const auto imm8 = static_cast<std::int32_t>(random_imm(c.rng, 8));
   switch (e.shape) {
     case BmiShape::kDstSrcRm:
-      return rm_is_mem ? InstructionFactory::with3(code, reg_of(w, d), reg_of(w, s), mem_operand(disp))
-                       : InstructionFactory::with3(code, reg_of(w, d), reg_of(w, s), reg_of(w, pick_reg_index(c.rng)));
+      return rm_is_mem ? Instruction::with3(code, reg_of(w, d), reg_of(w, s), mem_operand(disp)).value()
+                       : Instruction::with3(code, reg_of(w, d), reg_of(w, s), reg_of(w, pick_reg_index(c.rng))).value();
     case BmiShape::kDstRmSrc:
-      return rm_is_mem ? InstructionFactory::with3(code, reg_of(w, d), mem_operand(disp), reg_of(w, s))
-                       : InstructionFactory::with3(code, reg_of(w, d), reg_of(w, pick_reg_index(c.rng)), reg_of(w, s));
+      return rm_is_mem ? Instruction::with3(code, reg_of(w, d), mem_operand(disp), reg_of(w, s)).value()
+                       : Instruction::with3(code, reg_of(w, d), reg_of(w, pick_reg_index(c.rng)), reg_of(w, s)).value();
     case BmiShape::kDstRm:
-      return rm_is_mem ? InstructionFactory::with2(code, reg_of(w, d), mem_operand(disp))
-                       : InstructionFactory::with2(code, reg_of(w, d), reg_of(w, s));
+      return rm_is_mem ? Instruction::with2(code, reg_of(w, d), mem_operand(disp)).value()
+                       : Instruction::with2(code, reg_of(w, d), reg_of(w, s)).value();
     default:
-      return rm_is_mem ? InstructionFactory::with3(code, reg_of(w, d), mem_operand(disp), imm8)
-                       : InstructionFactory::with3(code, reg_of(w, d), reg_of(w, s), imm8);
+      return rm_is_mem ? Instruction::with3(code, reg_of(w, d), mem_operand(disp), imm8).value()
+                       : Instruction::with3(code, reg_of(w, d), reg_of(w, s), imm8).value();
   }
 }
 
@@ -1062,10 +1061,10 @@ const std::array<BmiEntry, 13> kBmi = {{
 struct W4Codes {
   std::array<Code, 4> code;  // 8,16,32,64
 };
-const W4Codes kMul = {{Code::MUL_RM8, Code::MUL_RM16, Code::MUL_RM32, Code::MUL_RM64}};
-const W4Codes kImul1 = {{Code::IMUL_RM8, Code::IMUL_RM16, Code::IMUL_RM32, Code::IMUL_RM64}};
-const W4Codes kDiv = {{Code::DIV_RM8, Code::DIV_RM16, Code::DIV_RM32, Code::DIV_RM64}};
-const W4Codes kIdiv = {{Code::IDIV_RM8, Code::IDIV_RM16, Code::IDIV_RM32, Code::IDIV_RM64}};
+const W4Codes kMul = {{Code::Mul_rm8, Code::Mul_rm16, Code::Mul_rm32, Code::Mul_rm64}};
+const W4Codes kImul1 = {{Code::Imul_rm8, Code::Imul_rm16, Code::Imul_rm32, Code::Imul_rm64}};
+const W4Codes kDiv = {{Code::Div_rm8, Code::Div_rm16, Code::Div_rm32, Code::Div_rm64}};
+const W4Codes kIdiv = {{Code::Idiv_rm8, Code::Idiv_rm16, Code::Idiv_rm32, Code::Idiv_rm64}};
 
 // x86 register numbering, excluding RAX(0)/RDX(2) -- those hold the dividend
 // in the "in-range" DIV/IDIV construction below, so the divisor register
@@ -1106,15 +1105,15 @@ constexpr std::array<int, 13> kNonAccumRegs = {1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 
     c.force_gpr[static_cast<std::size_t>(mapped)] = divisor;
     c.force_gpr[0] = lo;                        // RAX (also the whole AX for the 8-bit form)
     if (w != Width::W8) c.force_gpr[2] = hi;     // RDX -- unused/ignored by the 8-bit form
-    return InstructionFactory::with1(code, reg_of(w, mapped));
+    return Instruction::with1(code, reg_of(w, mapped)).value();
   }
 
   if (rand_int(c.rng, 0, 1) == 0) {
     const int r = pick_reg_index(c.rng);
-    return InstructionFactory::with1(code, reg_of(w, r));
+    return Instruction::with1(code, reg_of(w, r)).value();
   }
   c.touches_memory = true;
-  return InstructionFactory::with1(code, mem_operand(random_disp8(c.rng)));
+  return Instruction::with1(code, mem_operand(random_disp8(c.rng))).value();
 }
 
 struct Imul2Codes {
@@ -1124,10 +1123,10 @@ struct Imul3Codes {
   std::array<Code, 3> imm8;
   std::array<Code, 3> immfull;
 };
-const Imul2Codes kImul2 = {{Code::IMUL_R16_RM16, Code::IMUL_R32_RM32, Code::IMUL_R64_RM64}};
+const Imul2Codes kImul2 = {{Code::Imul_r16_rm16, Code::Imul_r32_rm32, Code::Imul_r64_rm64}};
 const Imul3Codes kImul3 = {
-    {Code::IMUL_R16_RM16_IMM8, Code::IMUL_R32_RM32_IMM8, Code::IMUL_R64_RM64_IMM8},
-    {Code::IMUL_R16_RM16_IMM16, Code::IMUL_R32_RM32_IMM32, Code::IMUL_R64_RM64_IMM32},
+    {Code::Imul_r16_rm16_imm8, Code::Imul_r32_rm32_imm8, Code::Imul_r64_rm64_imm8},
+    {Code::Imul_r16_rm16_imm16, Code::Imul_r32_rm32_imm32, Code::Imul_r64_rm64_imm32},
 };
 
 [[nodiscard]] std::optional<Instruction> gen_imul_multi(Ctx& c) {
@@ -1138,12 +1137,12 @@ const Imul3Codes kImul3 = {
 
   if (form == 0) {
     const int d = pick_reg_index(c.rng), s = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kImul2.rm[wi], reg_of(w, d), reg_of(w, s));
+    return Instruction::with2(kImul2.rm[wi], reg_of(w, d), reg_of(w, s)).value();
   }
   if (form == 1) {
     c.touches_memory = true;
     const int d = pick_reg_index(c.rng);
-    return InstructionFactory::with2(kImul2.rm[wi], reg_of(w, d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(kImul2.rm[wi], reg_of(w, d), mem_operand(random_disp8(c.rng))).value();
   }
   const int d = pick_reg_index(c.rng);
   const bool short_imm = rand_int(c.rng, 0, 1) == 0;
@@ -1153,12 +1152,12 @@ const Imul3Codes kImul3 = {
   const Code code = short_imm ? kImul3.imm8[wi] : kImul3.immfull[wi];
   if (rand_int(c.rng, 0, 1) == 0) {
     const int s = pick_reg_index(c.rng);
-    auto instr = InstructionFactory::with3(code, reg_of(w, d), reg_of(w, s), imm);
+    auto instr = Instruction::with3(code, reg_of(w, d), reg_of(w, s), imm).value();
     set_imm_sized(instr, 2, w, short_imm, static_cast<std::uint64_t>(imm));
     return instr;
   }
   c.touches_memory = true;
-  auto imul_mem = InstructionFactory::with3(code, reg_of(w, d), mem_operand(random_disp8(c.rng)), imm);
+  auto imul_mem = Instruction::with3(code, reg_of(w, d), mem_operand(random_disp8(c.rng)), imm).value();
   set_imm_sized(imul_mem, 2, w, short_imm, static_cast<std::uint64_t>(imm));
   return imul_mem;
 }
@@ -1191,14 +1190,14 @@ constexpr std::array<Register, 16> kRegsXmm = {
 // simd_shuffle.cpp that was never wired into handled_codes.def, so every real
 // SHUFPS hit unsupported_instruction while hardware executed it fine.
 constexpr std::array<Code, 5> kSimdShuffleImm = {
-    Code::SHUFPS_XMM_XMMM128_IMM8,  Code::SHUFPD_XMM_XMMM128_IMM8, Code::PSHUFD_XMM_XMMM128_IMM8,
-    Code::PSHUFLW_XMM_XMMM128_IMM8, Code::PSHUFHW_XMM_XMMM128_IMM8,
+    Code::Shufps_xmm_xmmm128_imm8,  Code::Shufpd_xmm_xmmm128_imm8, Code::Pshufd_xmm_xmmm128_imm8,
+    Code::Pshuflw_xmm_xmmm128_imm8, Code::Pshufhw_xmm_xmmm128_imm8,
 };
 // dst, src(xmm-or-mem), no imm -- UNPCK*/MOVSLDUP/MOVSHDUP/MOVDDUP
 constexpr std::array<Code, 7> kSimdShuffleNoImm = {
-    Code::UNPCKLPS_XMM_XMMM128, Code::UNPCKLPD_XMM_XMMM128, Code::UNPCKHPS_XMM_XMMM128,
-    Code::UNPCKHPD_XMM_XMMM128, Code::MOVSLDUP_XMM_XMMM128, Code::MOVSHDUP_XMM_XMMM128,
-    Code::MOVDDUP_XMM_XMMM64,
+    Code::Unpcklps_xmm_xmmm128, Code::Unpcklpd_xmm_xmmm128, Code::Unpckhps_xmm_xmmm128,
+    Code::Unpckhpd_xmm_xmmm128, Code::Movsldup_xmm_xmmm128, Code::Movshdup_xmm_xmmm128,
+    Code::Movddup_xmm_xmmm64,
 };
 
 [[nodiscard]] std::optional<Instruction> gen_simd_shuffle(Ctx& c) {
@@ -1211,12 +1210,12 @@ constexpr std::array<Code, 7> kSimdShuffleNoImm = {
     const auto imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
     if (use_mem) {
       c.touches_memory = true;
-      auto instr = InstructionFactory::with3(code, xmm_of(d), mem_operand(random_disp8(c.rng)), imm);
+      auto instr = Instruction::with3(code, xmm_of(d), mem_operand(random_disp8(c.rng)), imm).value();
       set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
       return instr;
     }
     const int s = pick_xmm_index(c.rng);
-    auto instr = InstructionFactory::with3(code, xmm_of(d), xmm_of(s), imm);
+    auto instr = Instruction::with3(code, xmm_of(d), xmm_of(s), imm).value();
     set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
     return instr;
   }
@@ -1224,16 +1223,16 @@ constexpr std::array<Code, 7> kSimdShuffleNoImm = {
       kSimdShuffleNoImm[static_cast<std::size_t>(rand_int(c.rng, 0, static_cast<int>(kSimdShuffleNoImm.size()) - 1))];
   if (use_mem) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 constexpr std::array<Code, 12> kSimdLogic = {
-    Code::ANDPS_XMM_XMMM128, Code::ANDPD_XMM_XMMM128, Code::ANDNPS_XMM_XMMM128, Code::ANDNPD_XMM_XMMM128,
-    Code::ORPS_XMM_XMMM128,  Code::ORPD_XMM_XMMM128,  Code::XORPS_XMM_XMMM128,  Code::XORPD_XMM_XMMM128,
-    Code::PAND_XMM_XMMM128,  Code::PANDN_XMM_XMMM128, Code::POR_XMM_XMMM128,    Code::PXOR_XMM_XMMM128,
+    Code::Andps_xmm_xmmm128, Code::Andpd_xmm_xmmm128, Code::Andnps_xmm_xmmm128, Code::Andnpd_xmm_xmmm128,
+    Code::Orps_xmm_xmmm128,  Code::Orpd_xmm_xmmm128,  Code::Xorps_xmm_xmmm128,  Code::Xorpd_xmm_xmmm128,
+    Code::Pand_xmm_xmmm128,  Code::Pandn_xmm_xmmm128, Code::Por_xmm_xmmm128,    Code::Pxor_xmm_xmmm128,
 };
 
 [[nodiscard]] std::optional<Instruction> gen_simd_logic(Ctx& c) {
@@ -1242,17 +1241,17 @@ constexpr std::array<Code, 12> kSimdLogic = {
   const int d = pick_xmm_index(c.rng);
   if (rand_int(c.rng, 0, 3) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 constexpr std::array<Code, 11> kSimdPack = {
-    Code::PACKSSWB_XMM_XMMM128,   Code::PACKSSDW_XMM_XMMM128,   Code::PACKUSWB_XMM_XMMM128,
-    Code::PUNPCKLBW_XMM_XMMM128,  Code::PUNPCKHBW_XMM_XMMM128,  Code::PUNPCKLWD_XMM_XMMM128,
-    Code::PUNPCKHWD_XMM_XMMM128,  Code::PUNPCKLDQ_XMM_XMMM128,  Code::PUNPCKHDQ_XMM_XMMM128,
-    Code::PUNPCKLQDQ_XMM_XMMM128, Code::PUNPCKHQDQ_XMM_XMMM128,
+    Code::Packsswb_xmm_xmmm128,   Code::Packssdw_xmm_xmmm128,   Code::Packuswb_xmm_xmmm128,
+    Code::Punpcklbw_xmm_xmmm128,  Code::Punpckhbw_xmm_xmmm128,  Code::Punpcklwd_xmm_xmmm128,
+    Code::Punpckhwd_xmm_xmmm128,  Code::Punpckldq_xmm_xmmm128,  Code::Punpckhdq_xmm_xmmm128,
+    Code::Punpcklqdq_xmm_xmmm128, Code::Punpckhqdq_xmm_xmmm128,
 };
 
 [[nodiscard]] std::optional<Instruction> gen_simd_pack(Ctx& c) {
@@ -1261,20 +1260,20 @@ constexpr std::array<Code, 11> kSimdPack = {
   const int d = pick_xmm_index(c.rng);
   if (rand_int(c.rng, 0, 3) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 constexpr std::array<Code, 8> kSimdShiftReg = {
-    Code::PSLLW_XMM_XMMM128, Code::PSLLD_XMM_XMMM128, Code::PSLLQ_XMM_XMMM128, Code::PSRLW_XMM_XMMM128,
-    Code::PSRLD_XMM_XMMM128, Code::PSRLQ_XMM_XMMM128, Code::PSRAW_XMM_XMMM128, Code::PSRAD_XMM_XMMM128,
+    Code::Psllw_xmm_xmmm128, Code::Pslld_xmm_xmmm128, Code::Psllq_xmm_xmmm128, Code::Psrlw_xmm_xmmm128,
+    Code::Psrld_xmm_xmmm128, Code::Psrlq_xmm_xmmm128, Code::Psraw_xmm_xmmm128, Code::Psrad_xmm_xmmm128,
 };
 constexpr std::array<Code, 10> kSimdShiftImm = {
-    Code::PSLLW_XMM_IMM8,  Code::PSLLD_XMM_IMM8,  Code::PSLLQ_XMM_IMM8,   Code::PSRLW_XMM_IMM8, Code::PSRLD_XMM_IMM8,
-    Code::PSRLQ_XMM_IMM8,  Code::PSRAW_XMM_IMM8,  Code::PSRAD_XMM_IMM8,
-    Code::PSRLDQ_XMM_IMM8, Code::PSLLDQ_XMM_IMM8,
+    Code::Psllw_xmm_imm8,  Code::Pslld_xmm_imm8,  Code::Psllq_xmm_imm8,   Code::Psrlw_xmm_imm8, Code::Psrld_xmm_imm8,
+    Code::Psrlq_xmm_imm8,  Code::Psraw_xmm_imm8,  Code::Psrad_xmm_imm8,
+    Code::Psrldq_xmm_imm8, Code::Pslldq_xmm_imm8,
 };
 
 [[nodiscard]] std::optional<Instruction> gen_simd_shift(Ctx& c) {
@@ -1284,7 +1283,7 @@ constexpr std::array<Code, 10> kSimdShiftImm = {
     const Code code =
         kSimdShiftImm[static_cast<std::size_t>(rand_int(c.rng, 0, static_cast<int>(kSimdShiftImm.size()) - 1))];
     const auto imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
-    auto instr = InstructionFactory::with2(code, xmm_of(d), imm);
+    auto instr = Instruction::with2(code, xmm_of(d), imm).value();
     set_imm8(instr, 1, static_cast<std::uint64_t>(imm));
     return instr;
   }
@@ -1292,18 +1291,18 @@ constexpr std::array<Code, 10> kSimdShiftImm = {
       kSimdShiftReg[static_cast<std::size_t>(rand_int(c.rng, 0, static_cast<int>(kSimdShiftReg.size()) - 1))];
   if (rand_int(c.rng, 0, 3) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 constexpr std::array<Code, 6> kSimdFpNoFlags = {
-    Code::ADDSUBPS_XMM_XMMM128, Code::ADDSUBPD_XMM_XMMM128, Code::HADDPS_XMM_XMMM128,
-    Code::HADDPD_XMM_XMMM128,   Code::HSUBPS_XMM_XMMM128,   Code::HSUBPD_XMM_XMMM128,
+    Code::Addsubps_xmm_xmmm128, Code::Addsubpd_xmm_xmmm128, Code::Haddps_xmm_xmmm128,
+    Code::Haddpd_xmm_xmmm128,   Code::Hsubps_xmm_xmmm128,   Code::Hsubpd_xmm_xmmm128,
 };
 constexpr std::array<Code, 4> kSimdFpCompare = {
-    Code::COMISS_XMM_XMMM32, Code::UCOMISS_XMM_XMMM32, Code::COMISD_XMM_XMMM64, Code::UCOMISD_XMM_XMMM64,
+    Code::Comiss_xmm_xmmm32, Code::Ucomiss_xmm_xmmm32, Code::Comisd_xmm_xmmm64, Code::Ucomisd_xmm_xmmm64,
 };
 
 // The SSE/SSE2 float workhorses. Every one of these twenty-eight is a real-code hot path and not one
@@ -1315,13 +1314,13 @@ constexpr std::array<Code, 4> kSimdFpCompare = {
 // RCP*/RSQRT* are deliberately absent: hardware only promises those to within a relative error
 // bound, so no soft-float implementation can match them bit for bit and every case would report.
 constexpr std::array<Code, 28> kSseArith = {
-    Code::ADDPS_XMM_XMMM128,  Code::ADDPD_XMM_XMMM128,  Code::ADDSS_XMM_XMMM32,  Code::ADDSD_XMM_XMMM64,
-    Code::SUBPS_XMM_XMMM128,  Code::SUBPD_XMM_XMMM128,  Code::SUBSS_XMM_XMMM32,  Code::SUBSD_XMM_XMMM64,
-    Code::MULPS_XMM_XMMM128,  Code::MULPD_XMM_XMMM128,  Code::MULSS_XMM_XMMM32,  Code::MULSD_XMM_XMMM64,
-    Code::DIVPS_XMM_XMMM128,  Code::DIVPD_XMM_XMMM128,  Code::DIVSS_XMM_XMMM32,  Code::DIVSD_XMM_XMMM64,
-    Code::MINPS_XMM_XMMM128,  Code::MINPD_XMM_XMMM128,  Code::MINSS_XMM_XMMM32,  Code::MINSD_XMM_XMMM64,
-    Code::MAXPS_XMM_XMMM128,  Code::MAXPD_XMM_XMMM128,  Code::MAXSS_XMM_XMMM32,  Code::MAXSD_XMM_XMMM64,
-    Code::SQRTPS_XMM_XMMM128, Code::SQRTPD_XMM_XMMM128, Code::SQRTSS_XMM_XMMM32, Code::SQRTSD_XMM_XMMM64,
+    Code::Addps_xmm_xmmm128,  Code::Addpd_xmm_xmmm128,  Code::Addss_xmm_xmmm32,  Code::Addsd_xmm_xmmm64,
+    Code::Subps_xmm_xmmm128,  Code::Subpd_xmm_xmmm128,  Code::Subss_xmm_xmmm32,  Code::Subsd_xmm_xmmm64,
+    Code::Mulps_xmm_xmmm128,  Code::Mulpd_xmm_xmmm128,  Code::Mulss_xmm_xmmm32,  Code::Mulsd_xmm_xmmm64,
+    Code::Divps_xmm_xmmm128,  Code::Divpd_xmm_xmmm128,  Code::Divss_xmm_xmmm32,  Code::Divsd_xmm_xmmm64,
+    Code::Minps_xmm_xmmm128,  Code::Minpd_xmm_xmmm128,  Code::Minss_xmm_xmmm32,  Code::Minsd_xmm_xmmm64,
+    Code::Maxps_xmm_xmmm128,  Code::Maxpd_xmm_xmmm128,  Code::Maxss_xmm_xmmm32,  Code::Maxsd_xmm_xmmm64,
+    Code::Sqrtps_xmm_xmmm128, Code::Sqrtpd_xmm_xmmm128, Code::Sqrtss_xmm_xmmm32, Code::Sqrtsd_xmm_xmmm64,
 };
 
 // The packed-integer workhorses. Saturating add/sub, the averaging pair, the high-half multiplies
@@ -1330,19 +1329,19 @@ constexpr std::array<Code, 28> kSseArith = {
 // truncating, PMULHW keeps the high half of a SIGNED product while PMULHUW keeps the unsigned one,
 // and PSADBW/PMADDWD change lane width mid-operation. None of these thirty-four had ever run.
 constexpr std::array<Code, 34> kPackedInt = {
-    Code::PADDB_XMM_XMMM128,    Code::PADDW_XMM_XMMM128,    Code::PADDD_XMM_XMMM128,
-    Code::PADDQ_XMM_XMMM128,    Code::PADDSB_XMM_XMMM128,   Code::PADDSW_XMM_XMMM128,
-    Code::PADDUSB_XMM_XMMM128,  Code::PADDUSW_XMM_XMMM128,
-    Code::PSUBB_XMM_XMMM128,    Code::PSUBW_XMM_XMMM128,    Code::PSUBD_XMM_XMMM128,
-    Code::PSUBQ_XMM_XMMM128,    Code::PSUBSB_XMM_XMMM128,   Code::PSUBSW_XMM_XMMM128,
-    Code::PSUBUSB_XMM_XMMM128,  Code::PSUBUSW_XMM_XMMM128,
-    Code::PCMPEQB_XMM_XMMM128,  Code::PCMPEQW_XMM_XMMM128,  Code::PCMPEQD_XMM_XMMM128,
-    Code::PCMPEQQ_XMM_XMMM128,  Code::PCMPGTB_XMM_XMMM128,  Code::PCMPGTW_XMM_XMMM128,
-    Code::PCMPGTD_XMM_XMMM128,  Code::PCMPGTQ_XMM_XMMM128,
-    Code::PAVGB_XMM_XMMM128,    Code::PAVGW_XMM_XMMM128,
-    Code::PMAXUB_XMM_XMMM128,   Code::PMINSW_XMM_XMMM128,
-    Code::PMULLW_XMM_XMMM128,   Code::PMULHW_XMM_XMMM128,   Code::PMULHUW_XMM_XMMM128,
-    Code::PMULUDQ_XMM_XMMM128,  Code::PMADDWD_XMM_XMMM128,  Code::PSADBW_XMM_XMMM128,
+    Code::Paddb_xmm_xmmm128,    Code::Paddw_xmm_xmmm128,    Code::Paddd_xmm_xmmm128,
+    Code::Paddq_xmm_xmmm128,    Code::Paddsb_xmm_xmmm128,   Code::Paddsw_xmm_xmmm128,
+    Code::Paddusb_xmm_xmmm128,  Code::Paddusw_xmm_xmmm128,
+    Code::Psubb_xmm_xmmm128,    Code::Psubw_xmm_xmmm128,    Code::Psubd_xmm_xmmm128,
+    Code::Psubq_xmm_xmmm128,    Code::Psubsb_xmm_xmmm128,   Code::Psubsw_xmm_xmmm128,
+    Code::Psubusb_xmm_xmmm128,  Code::Psubusw_xmm_xmmm128,
+    Code::Pcmpeqb_xmm_xmmm128,  Code::Pcmpeqw_xmm_xmmm128,  Code::Pcmpeqd_xmm_xmmm128,
+    Code::Pcmpeqq_xmm_xmmm128,  Code::Pcmpgtb_xmm_xmmm128,  Code::Pcmpgtw_xmm_xmmm128,
+    Code::Pcmpgtd_xmm_xmmm128,  Code::Pcmpgtq_xmm_xmmm128,
+    Code::Pavgb_xmm_xmmm128,    Code::Pavgw_xmm_xmmm128,
+    Code::Pmaxub_xmm_xmmm128,   Code::Pminsw_xmm_xmmm128,
+    Code::Pmullw_xmm_xmmm128,   Code::Pmulhw_xmm_xmmm128,   Code::Pmulhuw_xmm_xmmm128,
+    Code::Pmuludq_xmm_xmmm128,  Code::Pmaddwd_xmm_xmmm128,  Code::Psadbw_xmm_xmmm128,
 };
 
 // The SSE move forms, in both directions. Every SIMD family generated so far reads memory and writes
@@ -1357,25 +1356,25 @@ struct SseMoveForm {
 };
 
 constexpr std::array<SseMoveForm, 16> kSseMoveLoad = {{
-    {Code::MOVAPS_XMM_XMMM128, true},  {Code::MOVAPD_XMM_XMMM128, true},
-    {Code::MOVDQA_XMM_XMMM128, true},  {Code::MOVNTDQA_XMM_M128, true},
-    {Code::MOVUPS_XMM_XMMM128, false}, {Code::MOVUPD_XMM_XMMM128, false},
-    {Code::MOVDQU_XMM_XMMM128, false}, {Code::LDDQU_XMM_M128, false},
-    {Code::MOVSS_XMM_XMMM32, false},   {Code::MOVSD_XMM_XMMM64, false},
-    {Code::MOVHPS_XMM_M64, false},     {Code::MOVHPD_XMM_M64, false},
-    {Code::MOVLPS_XMM_M64, false},     {Code::MOVLPD_XMM_M64, false},
-    {Code::MOVQ_XMM_XMMM64, false},    {Code::MOVDDUP_XMM_XMMM64, false},
+    {Code::Movaps_xmm_xmmm128, true},  {Code::Movapd_xmm_xmmm128, true},
+    {Code::Movdqa_xmm_xmmm128, true},  {Code::Movntdqa_xmm_m128, true},
+    {Code::Movups_xmm_xmmm128, false}, {Code::Movupd_xmm_xmmm128, false},
+    {Code::Movdqu_xmm_xmmm128, false}, {Code::Lddqu_xmm_m128, false},
+    {Code::Movss_xmm_xmmm32, false},   {Code::Movsd_xmm_xmmm64, false},
+    {Code::Movhps_xmm_m64, false},     {Code::Movhpd_xmm_m64, false},
+    {Code::Movlps_xmm_m64, false},     {Code::Movlpd_xmm_m64, false},
+    {Code::Movq_xmm_xmmm64, false},    {Code::Movddup_xmm_xmmm64, false},
 }};
 
 constexpr std::array<SseMoveForm, 15> kSseMoveStore = {{
-    {Code::MOVAPS_XMMM128_XMM, true},  {Code::MOVAPD_XMMM128_XMM, true},
-    {Code::MOVDQA_XMMM128_XMM, true},  {Code::MOVNTPS_M128_XMM, true},
-    {Code::MOVNTPD_M128_XMM, true},    {Code::MOVNTDQ_M128_XMM, true},
-    {Code::MOVUPS_XMMM128_XMM, false}, {Code::MOVUPD_XMMM128_XMM, false},
-    {Code::MOVDQU_XMMM128_XMM, false}, {Code::MOVSS_XMMM32_XMM, false},
-    {Code::MOVSD_XMMM64_XMM, false},   {Code::MOVHPS_M64_XMM, false},
-    {Code::MOVHPD_M64_XMM, false},     {Code::MOVLPS_M64_XMM, false},
-    {Code::MOVLPD_M64_XMM, false},
+    {Code::Movaps_xmmm128_xmm, true},  {Code::Movapd_xmmm128_xmm, true},
+    {Code::Movdqa_xmmm128_xmm, true},  {Code::Movntps_m128_xmm, true},
+    {Code::Movntpd_m128_xmm, true},    {Code::Movntdq_m128_xmm, true},
+    {Code::Movups_xmmm128_xmm, false}, {Code::Movupd_xmmm128_xmm, false},
+    {Code::Movdqu_xmmm128_xmm, false}, {Code::Movss_xmmm32_xmm, false},
+    {Code::Movsd_xmmm64_xmm, false},   {Code::Movhps_m64_xmm, false},
+    {Code::Movhpd_m64_xmm, false},     {Code::Movlps_m64_xmm, false},
+    {Code::Movlpd_m64_xmm, false},
 }};
 
 [[nodiscard]] std::optional<Instruction> gen_sse_move(Ctx& c) {
@@ -1394,17 +1393,17 @@ constexpr std::array<SseMoveForm, 15> kSseMoveStore = {{
   const int reg = pick_xmm_index(c.rng);
   if (store) {
     c.touches_memory = true;
-    return InstructionFactory::with2(form.code, mem_operand(disp), xmm_of(reg));
+    return Instruction::with2(form.code, mem_operand(disp), xmm_of(reg)).value();
   }
   // The M-only load forms have no register-source encoding at all.
-  const bool mem_only = form.code == Code::MOVNTDQA_XMM_M128 || form.code == Code::LDDQU_XMM_M128 ||
-                        form.code == Code::MOVHPS_XMM_M64 || form.code == Code::MOVHPD_XMM_M64 ||
-                        form.code == Code::MOVLPS_XMM_M64 || form.code == Code::MOVLPD_XMM_M64;
+  const bool mem_only = form.code == Code::Movntdqa_xmm_m128 || form.code == Code::Lddqu_xmm_m128 ||
+                        form.code == Code::Movhps_xmm_m64 || form.code == Code::Movhpd_xmm_m64 ||
+                        form.code == Code::Movlps_xmm_m64 || form.code == Code::Movlpd_xmm_m64;
   if (mem_only || rand_int(c.rng, 0, 2) != 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(form.code, xmm_of(reg), mem_operand(disp));
+    return Instruction::with2(form.code, xmm_of(reg), mem_operand(disp)).value();
   }
-  return InstructionFactory::with2(form.code, xmm_of(reg), xmm_of(pick_xmm_index(c.rng)));
+  return Instruction::with2(form.code, xmm_of(reg), xmm_of(pick_xmm_index(c.rng))).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_packed_int(Ctx& c) {
@@ -1415,10 +1414,10 @@ constexpr std::array<SseMoveForm, 15> kSseMoveStore = {{
     c.touches_memory = true;
     // The legacy m128 forms all require a 16-byte-aligned source, so keep the displacement aligned
     // rather than spending three quarters of this family's budget re-proving the same #GP.
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(aligned_disp8(c.rng, 16)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(aligned_disp8(c.rng, 16))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_sse_arith(Ctx& c) {
@@ -1427,10 +1426,10 @@ constexpr std::array<SseMoveForm, 15> kSseMoveStore = {{
   const int d = pick_xmm_index(c.rng);
   if (rand_int(c.rng, 0, 3) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_simd_fp(Ctx& c) {
@@ -1447,10 +1446,10 @@ constexpr std::array<SseMoveForm, 15> kSseMoveStore = {{
   c.flags_mask = is_compare ? kCompareFlagsMask : 0;
   if (rand_int(c.rng, 0, 3) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng)));
+    return Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value();
   }
   const int s = pick_xmm_index(c.rng);
-  return InstructionFactory::with2(code, xmm_of(d), xmm_of(s));
+  return Instruction::with2(code, xmm_of(d), xmm_of(s)).value();
 }
 
 // ------------------------------------------------ VEX / EVEX SIMD (128-bit)
@@ -1502,210 +1501,210 @@ struct VexEntry {
 // Derived from seven's own handled_codes.def rather than typed out, so the list cannot drift from
 // what the emulator claims to support and cannot contain a mnemonic that does not exist.
 constexpr std::array<VexEntry, 204> kVexSimd = {{
-    {Code::EVEX_VMOVAPD_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVAPD_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVAPS_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVAPS_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVDDUP_XMM_K1Z_XMMM64, VexShape::kDstRm64, true, false},
-    {Code::EVEX_VMOVDQA32_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVDQA32_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVDQA64_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVDQA64_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVDQU16_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVDQU16_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVDQU32_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVDQU32_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVDQU64_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVDQU64_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVDQU8_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVDQU8_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVHLPS_XMM_XMM_XMM, VexShape::kDstSrcSrc, true, false},
-    {Code::EVEX_VMOVLHPS_XMM_XMM_XMM, VexShape::kDstSrcSrc, true, false},
-    {Code::EVEX_VMOVQ_XMM_XMMM64, VexShape::kDstRm64, true, false},
-    {Code::EVEX_VMOVSD_XMM_K1Z_XMM_XMM, VexShape::kDstSrcSrc, true, false},
-    {Code::EVEX_VMOVSHDUP_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVSLDUP_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVSS_XMM_K1Z_XMM_XMM, VexShape::kDstSrcSrc, true, false},
-    {Code::EVEX_VMOVUPD_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVUPD_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VMOVUPS_XMMM128_K1Z_XMM, VexShape::kRmDst, true, false},
-    {Code::EVEX_VMOVUPS_XMM_K1Z_XMMM128, VexShape::kDstRm, true, false},
-    {Code::EVEX_VPACKSSDW_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPACKSSWB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPACKUSWB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPADDB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPADDD_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPADDQ_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPADDSB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPADDSW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPADDUSB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPADDUSW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPADDW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPANDD_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPANDND_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPANDNQ_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPANDQ_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPAVGB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPAVGW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPMULLW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPORD_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPORQ_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPSLLD_XMM_K1Z_XMMM128B32_IMM8, VexShape::kDstRmImm, true, true},
-    {Code::EVEX_VPSLLD_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSLLQ_XMM_K1Z_XMMM128B64_IMM8, VexShape::kDstRmImm, true, true},
-    {Code::EVEX_VPSLLQ_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSLLW_XMM_K1Z_XMMM128_IMM8, VexShape::kDstRmImm, true, false},
-    {Code::EVEX_VPSLLW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSRAD_XMM_K1Z_XMMM128B32_IMM8, VexShape::kDstRmImm, true, true},
-    {Code::EVEX_VPSRAD_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSRAW_XMM_K1Z_XMMM128_IMM8, VexShape::kDstRmImm, true, false},
-    {Code::EVEX_VPSRAW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSRLD_XMM_K1Z_XMMM128B32_IMM8, VexShape::kDstRmImm, true, true},
-    {Code::EVEX_VPSRLD_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSRLQ_XMM_K1Z_XMMM128B64_IMM8, VexShape::kDstRmImm, true, true},
-    {Code::EVEX_VPSRLQ_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSRLW_XMM_K1Z_XMMM128_IMM8, VexShape::kDstRmImm, true, false},
-    {Code::EVEX_VPSRLW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSUBB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSUBD_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPSUBQ_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPSUBSB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSUBSW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSUBUSB_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSUBUSW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPSUBW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPUNPCKHBW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPUNPCKHDQ_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPUNPCKHWD_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPUNPCKLBW_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPUNPCKLDQ_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPUNPCKLWD_XMM_K1Z_XMM_XMMM128, VexShape::kDstSrcRm, true, false},
-    {Code::EVEX_VPXORD_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VPXORQ_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VSHUFPD_XMM_K1Z_XMM_XMMM128B64_IMM8, VexShape::kDstSrcRmImm, true, true},
-    {Code::EVEX_VSHUFPS_XMM_K1Z_XMM_XMMM128B32_IMM8, VexShape::kDstSrcRmImm, true, true},
-    {Code::EVEX_VUNPCKHPD_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VUNPCKHPS_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VUNPCKLPD_XMM_K1Z_XMM_XMMM128B64, VexShape::kDstSrcRm, true, true},
-    {Code::EVEX_VUNPCKLPS_XMM_K1Z_XMM_XMMM128B32, VexShape::kDstSrcRm, true, true},
-    {Code::VEX_VADDPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VADDPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VADDSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VADDSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VANDNPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VANDNPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VANDPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VANDPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VDIVPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VDIVPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VDIVSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VDIVSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VMAXPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VMAXPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VMAXSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VMAXSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VMINPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VMINPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VMINSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VMINSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VMOVAPD_XMMM128_XMM, VexShape::kRmDst, false, false},
-    {Code::VEX_VMOVAPD_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVAPS_XMMM128_XMM, VexShape::kRmDst, false, false},
-    {Code::VEX_VMOVAPS_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVDDUP_XMM_XMMM64, VexShape::kDstRm64, false, false},
-    {Code::VEX_VMOVDQA_XMMM128_XMM, VexShape::kRmDst, false, false},
-    {Code::VEX_VMOVDQA_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVDQU_XMMM128_XMM, VexShape::kRmDst, false, false},
-    {Code::VEX_VMOVDQU_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVHLPS_XMM_XMM_XMM, VexShape::kDstSrcSrc, false, false},
-    {Code::VEX_VMOVLHPS_XMM_XMM_XMM, VexShape::kDstSrcSrc, false, false},
-    {Code::VEX_VMOVQ_XMM_XMMM64, VexShape::kDstRm64, false, false},
-    {Code::VEX_VMOVSD_XMM_XMM_XMM, VexShape::kDstSrcSrc, false, false},
-    {Code::VEX_VMOVSHDUP_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVSLDUP_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVSS_XMM_XMM_XMM, VexShape::kDstSrcSrc, false, false},
-    {Code::VEX_VMOVUPD_XMMM128_XMM, VexShape::kRmDst, false, false},
-    {Code::VEX_VMOVUPD_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMOVUPS_XMMM128_XMM, VexShape::kRmDst, false, false},
-    {Code::VEX_VMOVUPS_XMM_XMMM128, VexShape::kDstRm, false, false},
-    {Code::VEX_VMULPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VMULPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VMULSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VMULSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VORPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VORPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPACKSSDW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPACKSSWB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPACKUSWB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDSB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDSW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDUSB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDUSW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPADDW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPANDN_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPAND_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPAVGB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPAVGW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPEQB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPEQD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPEQQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPEQW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPGTB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPGTD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPGTQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPCMPGTW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPMULLW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPOR_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSLLDQ_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSLLD_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSLLD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSLLQ_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSLLQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSLLW_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSLLW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSRAD_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSRAD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSRAW_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSRAW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSRLDQ_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSRLD_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSRLD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSRLQ_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSRLQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSRLW_XMM_XMM_IMM8, VexShape::kDstSrcImm, false, false},
-    {Code::VEX_VPSRLW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBSB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBSW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBUSB_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBUSW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPSUBW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPUNPCKHBW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPUNPCKHDQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPUNPCKHWD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPUNPCKLBW_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPUNPCKLDQ_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPUNPCKLWD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VPXOR_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VSHUFPD_XMM_XMM_XMMM128_IMM8, VexShape::kDstSrcRmImm, false, false},
-    {Code::VEX_VSHUFPS_XMM_XMM_XMMM128_IMM8, VexShape::kDstSrcRmImm, false, false},
-    {Code::VEX_VSQRTSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VSQRTSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VSUBPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VSUBPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VSUBSD_XMM_XMM_XMMM64, VexShape::kDstSrcRm64, false, false},
-    {Code::VEX_VSUBSS_XMM_XMM_XMMM32, VexShape::kDstSrcRm32, false, false},
-    {Code::VEX_VUNPCKHPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VUNPCKHPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VUNPCKLPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VUNPCKLPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VXORPD_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
-    {Code::VEX_VXORPS_XMM_XMM_XMMM128, VexShape::kDstSrcRm, false, false},
+    {Code::EVEX_Vmovapd_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovapd_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovaps_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovaps_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovddup_xmm_k1z_xmmm64, VexShape::kDstRm64, true, false},
+    {Code::EVEX_Vmovdqa32_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovdqa32_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovdqa64_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovdqa64_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovdqu16_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovdqu16_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovdqu32_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovdqu32_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovdqu64_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovdqu64_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovdqu8_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovdqu8_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovhlps_xmm_xmm_xmm, VexShape::kDstSrcSrc, true, false},
+    {Code::EVEX_Vmovlhps_xmm_xmm_xmm, VexShape::kDstSrcSrc, true, false},
+    {Code::EVEX_Vmovq_xmm_xmmm64, VexShape::kDstRm64, true, false},
+    {Code::EVEX_Vmovsd_xmm_k1z_xmm_xmm, VexShape::kDstSrcSrc, true, false},
+    {Code::EVEX_Vmovshdup_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovsldup_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovss_xmm_k1z_xmm_xmm, VexShape::kDstSrcSrc, true, false},
+    {Code::EVEX_Vmovupd_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovupd_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vmovups_xmmm128_k1z_xmm, VexShape::kRmDst, true, false},
+    {Code::EVEX_Vmovups_xmm_k1z_xmmm128, VexShape::kDstRm, true, false},
+    {Code::EVEX_Vpackssdw_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpacksswb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpackuswb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpaddb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpaddd_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpaddq_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpaddsb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpaddsw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpaddusb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpaddusw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpaddw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpandd_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpandnd_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpandnq_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpandq_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpavgb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpavgw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpmullw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpord_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vporq_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpslld_xmm_k1z_xmmm128b32_imm8, VexShape::kDstRmImm, true, true},
+    {Code::EVEX_Vpslld_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsllq_xmm_k1z_xmmm128b64_imm8, VexShape::kDstRmImm, true, true},
+    {Code::EVEX_Vpsllq_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsllw_xmm_k1z_xmmm128_imm8, VexShape::kDstRmImm, true, false},
+    {Code::EVEX_Vpsllw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsrad_xmm_k1z_xmmm128b32_imm8, VexShape::kDstRmImm, true, true},
+    {Code::EVEX_Vpsrad_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsraw_xmm_k1z_xmmm128_imm8, VexShape::kDstRmImm, true, false},
+    {Code::EVEX_Vpsraw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsrld_xmm_k1z_xmmm128b32_imm8, VexShape::kDstRmImm, true, true},
+    {Code::EVEX_Vpsrld_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsrlq_xmm_k1z_xmmm128b64_imm8, VexShape::kDstRmImm, true, true},
+    {Code::EVEX_Vpsrlq_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsrlw_xmm_k1z_xmmm128_imm8, VexShape::kDstRmImm, true, false},
+    {Code::EVEX_Vpsrlw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsubb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsubd_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpsubq_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpsubsb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsubsw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsubusb_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsubusw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpsubw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpunpckhbw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpunpckhdq_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpunpckhwd_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpunpcklbw_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpunpckldq_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpunpcklwd_xmm_k1z_xmm_xmmm128, VexShape::kDstSrcRm, true, false},
+    {Code::EVEX_Vpxord_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vpxorq_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vshufpd_xmm_k1z_xmm_xmmm128b64_imm8, VexShape::kDstSrcRmImm, true, true},
+    {Code::EVEX_Vshufps_xmm_k1z_xmm_xmmm128b32_imm8, VexShape::kDstSrcRmImm, true, true},
+    {Code::EVEX_Vunpckhpd_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vunpckhps_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vunpcklpd_xmm_k1z_xmm_xmmm128b64, VexShape::kDstSrcRm, true, true},
+    {Code::EVEX_Vunpcklps_xmm_k1z_xmm_xmmm128b32, VexShape::kDstSrcRm, true, true},
+    {Code::VEX_Vaddpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vaddps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vaddsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vaddss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vandnpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vandnps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vandpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vandps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vdivpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vdivps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vdivsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vdivss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vmaxpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vmaxps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vmaxsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vmaxss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vminpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vminps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vminsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vminss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vmovapd_xmmm128_xmm, VexShape::kRmDst, false, false},
+    {Code::VEX_Vmovapd_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovaps_xmmm128_xmm, VexShape::kRmDst, false, false},
+    {Code::VEX_Vmovaps_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovddup_xmm_xmmm64, VexShape::kDstRm64, false, false},
+    {Code::VEX_Vmovdqa_xmmm128_xmm, VexShape::kRmDst, false, false},
+    {Code::VEX_Vmovdqa_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovdqu_xmmm128_xmm, VexShape::kRmDst, false, false},
+    {Code::VEX_Vmovdqu_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovhlps_xmm_xmm_xmm, VexShape::kDstSrcSrc, false, false},
+    {Code::VEX_Vmovlhps_xmm_xmm_xmm, VexShape::kDstSrcSrc, false, false},
+    {Code::VEX_Vmovq_xmm_xmmm64, VexShape::kDstRm64, false, false},
+    {Code::VEX_Vmovsd_xmm_xmm_xmm, VexShape::kDstSrcSrc, false, false},
+    {Code::VEX_Vmovshdup_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovsldup_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovss_xmm_xmm_xmm, VexShape::kDstSrcSrc, false, false},
+    {Code::VEX_Vmovupd_xmmm128_xmm, VexShape::kRmDst, false, false},
+    {Code::VEX_Vmovupd_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmovups_xmmm128_xmm, VexShape::kRmDst, false, false},
+    {Code::VEX_Vmovups_xmm_xmmm128, VexShape::kDstRm, false, false},
+    {Code::VEX_Vmulpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vmulps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vmulsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vmulss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vorpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vorps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpackssdw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpacksswb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpackuswb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddsb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddsw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddusb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddusw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpaddw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpandn_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpand_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpavgb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpavgw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpeqb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpeqd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpeqq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpeqw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpgtb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpgtd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpgtq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpcmpgtw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpmullw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpor_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpslldq_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpslld_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpslld_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsllq_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsllq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsllw_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsllw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsrad_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsrad_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsraw_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsraw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsrldq_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsrld_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsrld_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsrlq_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsrlq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsrlw_xmm_xmm_imm8, VexShape::kDstSrcImm, false, false},
+    {Code::VEX_Vpsrlw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubsb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubsw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubusb_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubusw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpsubw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpunpckhbw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpunpckhdq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpunpckhwd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpunpcklbw_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpunpckldq_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpunpcklwd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vpxor_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vshufpd_xmm_xmm_xmmm128_imm8, VexShape::kDstSrcRmImm, false, false},
+    {Code::VEX_Vshufps_xmm_xmm_xmmm128_imm8, VexShape::kDstSrcRmImm, false, false},
+    {Code::VEX_Vsqrtsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vsqrtss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vsubpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vsubps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vsubsd_xmm_xmm_xmmm64, VexShape::kDstSrcRm64, false, false},
+    {Code::VEX_Vsubss_xmm_xmm_xmmm32, VexShape::kDstSrcRm32, false, false},
+    {Code::VEX_Vunpckhpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vunpckhps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vunpcklpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vunpcklps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vxorpd_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
+    {Code::VEX_Vxorps_xmm_xmm_xmmm128, VexShape::kDstSrcRm, false, false},
 }};
 
 [[nodiscard]] std::optional<Instruction> gen_vex_simd(Ctx& c) {
@@ -1748,31 +1747,31 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
     case VexShape::kDstSrcRm32:
       if (use_mem) {
         c.touches_memory = true;
-        return finish(InstructionFactory::with3(code, xmm_of(d), xmm_of(s1), mem_operand(random_disp8(c.rng))));
+        return finish(Instruction::with3(code, xmm_of(d), xmm_of(s1), mem_operand(random_disp8(c.rng))).value());
       }
-      return InstructionFactory::with3(code, xmm_of(d), xmm_of(s1), xmm_of(s2));
+      return Instruction::with3(code, xmm_of(d), xmm_of(s1), xmm_of(s2)).value();
 
     case VexShape::kDstRm:
     case VexShape::kDstRm64:
       if (use_mem) {
         c.touches_memory = true;
-        return finish(InstructionFactory::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))));
+        return finish(Instruction::with2(code, xmm_of(d), mem_operand(random_disp8(c.rng))).value());
       }
-      return InstructionFactory::with2(code, xmm_of(d), xmm_of(s1));
+      return Instruction::with2(code, xmm_of(d), xmm_of(s1)).value();
 
     case VexShape::kRmDst:
       if (use_mem) {
         c.touches_memory = true;
-        return InstructionFactory::with2(code, mem_operand(random_disp8(c.rng)), xmm_of(s1));
+        return Instruction::with2(code, mem_operand(random_disp8(c.rng)), xmm_of(s1)).value();
       }
-      return InstructionFactory::with2(code, xmm_of(d), xmm_of(s1));
+      return Instruction::with2(code, xmm_of(d), xmm_of(s1)).value();
 
     case VexShape::kDstSrcSrc:
-      return InstructionFactory::with3(code, xmm_of(d), xmm_of(s1), xmm_of(s2));
+      return Instruction::with3(code, xmm_of(d), xmm_of(s1), xmm_of(s2)).value();
 
     case VexShape::kDstSrcImm: {
       const auto imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
-      auto instr = InstructionFactory::with3(code, xmm_of(d), xmm_of(s1), imm);
+      auto instr = Instruction::with3(code, xmm_of(d), xmm_of(s1), imm).value();
       set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
       return instr;
     }
@@ -1781,11 +1780,11 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
       const auto imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
       if (use_mem) {
         c.touches_memory = true;
-        auto instr = InstructionFactory::with4(code, xmm_of(d), xmm_of(s1), mem_operand(random_disp8(c.rng)), imm);
+        auto instr = Instruction::with4(code, xmm_of(d), xmm_of(s1), mem_operand(random_disp8(c.rng)), imm).value();
         set_imm8(instr, 3, static_cast<std::uint64_t>(imm));
         return finish(instr);
       }
-      auto instr = InstructionFactory::with4(code, xmm_of(d), xmm_of(s1), xmm_of(s2), imm);
+      auto instr = Instruction::with4(code, xmm_of(d), xmm_of(s1), xmm_of(s2), imm).value();
       set_imm8(instr, 3, static_cast<std::uint64_t>(imm));
       return instr;
     }
@@ -1794,11 +1793,11 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
       const auto imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
       if (use_mem) {
         c.touches_memory = true;
-        auto instr = InstructionFactory::with3(code, xmm_of(d), mem_operand(random_disp8(c.rng)), imm);
+        auto instr = Instruction::with3(code, xmm_of(d), mem_operand(random_disp8(c.rng)), imm).value();
         set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
         return instr;
       }
-      auto instr = InstructionFactory::with3(code, xmm_of(d), xmm_of(s1), imm);
+      auto instr = Instruction::with3(code, xmm_of(d), xmm_of(s1), imm).value();
       set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
       return instr;
     }
@@ -1811,10 +1810,10 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
 // The read-modify-write trio. XCHG against memory carries an implicit LOCK, and all three have a
 // second write-back that a plain ALU handler doesn't, which is exactly the part worth comparing.
 [[nodiscard]] std::optional<Instruction> gen_xchg(Ctx& c) {
-  static constexpr std::array<Code, 4> kRmR = {Code::XCHG_RM8_R8, Code::XCHG_RM16_R16,
-                                                Code::XCHG_RM32_R32, Code::XCHG_RM64_R64};
-  static constexpr std::array<Code, 3> kShort = {Code::XCHG_R16_AX, Code::XCHG_R32_EAX,
-                                                  Code::XCHG_R64_RAX};
+  static constexpr std::array<Code, 4> kRmR = {Code::Xchg_rm8_r8, Code::Xchg_rm16_r16,
+                                                Code::Xchg_rm32_r32, Code::Xchg_rm64_r64};
+  static constexpr std::array<Code, 3> kShort = {Code::Xchg_r16_AX, Code::Xchg_r32_EAX,
+                                                  Code::Xchg_r64_RAX};
   c.flags_mask = 0;  // XCHG defines no flags
   if (rand_int(c.rng, 0, 3) == 0) {
     // The 0x90+r short form. Register 0 is excluded because `xchg rax,rax` is NOP's own encoding,
@@ -1822,30 +1821,30 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
     const Width w = width16_32_64(c.rng);
     const int r = rand_int(c.rng, 1, 15);
     const Register acc = w == Width::W16 ? Register::AX : w == Width::W32 ? Register::EAX : Register::RAX;
-    return InstructionFactory::with2(kShort[static_cast<std::size_t>(widx16_32_64(w))], reg_of(w, r), acc);
+    return Instruction::with2(kShort[static_cast<std::size_t>(widx16_32_64(w))], reg_of(w, r), acc).value();
   }
   const Width w = static_cast<Width>(rand_int(c.rng, 0, 3));
   const Code code = kRmR[static_cast<std::size_t>(w)];
   const int s = pick_reg_index(c.rng);
   if (rand_int(c.rng, 0, 2) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, mem_operand(random_disp8(c.rng)), reg_of(w, s));
+    return Instruction::with2(code, mem_operand(random_disp8(c.rng)), reg_of(w, s)).value();
   }
-  return InstructionFactory::with2(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s));
+  return Instruction::with2(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_xadd_cmpxchg(Ctx& c) {
-  static constexpr std::array<Code, 4> kXadd = {Code::XADD_RM8_R8, Code::XADD_RM16_R16,
-                                                 Code::XADD_RM32_R32, Code::XADD_RM64_R64};
-  static constexpr std::array<Code, 4> kCmpxchg = {Code::CMPXCHG_RM8_R8, Code::CMPXCHG_RM16_R16,
-                                                    Code::CMPXCHG_RM32_R32, Code::CMPXCHG_RM64_R64};
+  static constexpr std::array<Code, 4> kXadd = {Code::Xadd_rm8_r8, Code::Xadd_rm16_r16,
+                                                 Code::Xadd_rm32_r32, Code::Xadd_rm64_r64};
+  static constexpr std::array<Code, 4> kCmpxchg = {Code::Cmpxchg_rm8_r8, Code::Cmpxchg_rm16_r16,
+                                                    Code::Cmpxchg_rm32_r32, Code::Cmpxchg_rm64_r64};
   const Width w = static_cast<Width>(rand_int(c.rng, 0, 3));
   const bool is_xadd = rand_int(c.rng, 0, 1) == 0;
   const Code code = (is_xadd ? kXadd : kCmpxchg)[static_cast<std::size_t>(w)];
   const int s = pick_reg_index(c.rng);
   if (rand_int(c.rng, 0, 2) == 0) {
     c.touches_memory = true;
-    return InstructionFactory::with2(code, mem_operand(random_disp8(c.rng)), reg_of(w, s));
+    return Instruction::with2(code, mem_operand(random_disp8(c.rng)), reg_of(w, s)).value();
   }
   // CMPXCHG compares against the accumulator, and a fully random one never matches. Force the
   // equal case half the time so the ZF-set branch and its accumulator write-back both get hit.
@@ -1856,20 +1855,20 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
       c.force_gpr[0] = shared;
       c.force_gpr[static_cast<std::size_t>(d)] = shared;
     }
-    return InstructionFactory::with2(code, reg_of(w, d), reg_of(w, s));
+    return Instruction::with2(code, reg_of(w, d), reg_of(w, s)).value();
   }
-  return InstructionFactory::with2(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s));
+  return Instruction::with2(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_shld_shrd(Ctx& c) {
-  static constexpr std::array<Code, 3> kShldCl = {Code::SHLD_RM16_R16_CL, Code::SHLD_RM32_R32_CL,
-                                                   Code::SHLD_RM64_R64_CL};
-  static constexpr std::array<Code, 3> kShldImm = {Code::SHLD_RM16_R16_IMM8, Code::SHLD_RM32_R32_IMM8,
-                                                    Code::SHLD_RM64_R64_IMM8};
-  static constexpr std::array<Code, 3> kShrdCl = {Code::SHRD_RM16_R16_CL, Code::SHRD_RM32_R32_CL,
-                                                   Code::SHRD_RM64_R64_CL};
-  static constexpr std::array<Code, 3> kShrdImm = {Code::SHRD_RM16_R16_IMM8, Code::SHRD_RM32_R32_IMM8,
-                                                    Code::SHRD_RM64_R64_IMM8};
+  static constexpr std::array<Code, 3> kShldCl = {Code::Shld_rm16_r16_CL, Code::Shld_rm32_r32_CL,
+                                                   Code::Shld_rm64_r64_CL};
+  static constexpr std::array<Code, 3> kShldImm = {Code::Shld_rm16_r16_imm8, Code::Shld_rm32_r32_imm8,
+                                                    Code::Shld_rm64_r64_imm8};
+  static constexpr std::array<Code, 3> kShrdCl = {Code::Shrd_rm16_r16_CL, Code::Shrd_rm32_r32_CL,
+                                                   Code::Shrd_rm64_r64_CL};
+  static constexpr std::array<Code, 3> kShrdImm = {Code::Shrd_rm16_r16_imm8, Code::Shrd_rm32_r32_imm8,
+                                                    Code::Shrd_rm64_r64_imm8};
   // OF is only defined for a 1-bit shift and AF is undefined whenever a shift happens, so neither
   // is comparable against a randomized count.
   c.flags_mask &= ~(0x0800ull | 0x0010ull);
@@ -1890,20 +1889,20 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
     if (narrow) { c.force_gpr[1] = static_cast<std::uint64_t>(rand_int(c.rng, 0, 15)); }
     if (use_mem) {
       c.touches_memory = true;
-      return InstructionFactory::with3(code, mem_operand(random_disp8(c.rng)), reg_of(w, s), Register::CL);
+      return Instruction::with3(code, mem_operand(random_disp8(c.rng)), reg_of(w, s), Register::CL).value();
     }
-    return InstructionFactory::with3(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s), Register::CL);
+    return Instruction::with3(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s), Register::CL).value();
   }
   std::int32_t imm = static_cast<std::int32_t>(random_imm(c.rng, 8));
   if (rand_int(c.rng, 0, 4) != 0) imm &= 0x3F;
   if (narrow) imm &= 0x0F;
   if (use_mem) {
     c.touches_memory = true;
-    auto instr = InstructionFactory::with3(code, mem_operand(random_disp8(c.rng)), reg_of(w, s), imm);
+    auto instr = Instruction::with3(code, mem_operand(random_disp8(c.rng)), reg_of(w, s), imm).value();
     set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
     return instr;
   }
-  auto instr = InstructionFactory::with3(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s), imm);
+  auto instr = Instruction::with3(code, reg_of(w, pick_reg_index(c.rng)), reg_of(w, s), imm).value();
   set_imm8(instr, 2, static_cast<std::uint64_t>(imm));
   return instr;
 }
@@ -1923,16 +1922,16 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
   c.flags_mask = 0;  // none of these define/depend on the ALU status flags
   const int pick = rand_int(c.rng, 0, 9);
   switch (pick) {
-    case 0: return InstructionFactory::with(Code::CLI);
-    case 1: return InstructionFactory::with(Code::STI);
-    case 2: return InstructionFactory::with(Code::HLT);
-    case 3: return InstructionFactory::with(Code::CLTS);
-    case 4: return InstructionFactory::with(Code::INVD);
-    case 5: return InstructionFactory::with(Code::WBINVD);
-    case 6: return InstructionFactory::with(Code::SWAPGS);
-    case 7: return InstructionFactory::with(Code::XSETBV);
-    case 8: return InstructionFactory::with(Code::RDMSR);
-    case 9: return InstructionFactory::with(Code::WRMSR);
+    case 0: return Instruction::with(Code::Cli);
+    case 1: return Instruction::with(Code::Sti);
+    case 2: return Instruction::with(Code::Hlt);
+    case 3: return Instruction::with(Code::Clts);
+    case 4: return Instruction::with(Code::Invd);
+    case 5: return Instruction::with(Code::Wbinvd);
+    case 6: return Instruction::with(Code::Swapgs);
+    case 7: return Instruction::with(Code::Xsetbv);
+    case 8: return Instruction::with(Code::Rdmsr);
+    case 9: return Instruction::with(Code::Wrmsr);
     default: break;
   }
   return std::nullopt;
@@ -1948,12 +1947,12 @@ constexpr std::array<VexEntry, 204> kVexSimd = {{
   const int gp = pick_reg_index(c.rng);
   if (is_cr) {
     const Register crreg = kCr[static_cast<std::size_t>(rand_int(c.rng, 0, 4))];
-    return read_dir ? InstructionFactory::with2(Code::MOV_R64_CR, reg_of(Width::W64, gp), crreg)
-                     : InstructionFactory::with2(Code::MOV_CR_R64, crreg, reg_of(Width::W64, gp));
+    return read_dir ? Instruction::with2(Code::Mov_r64_cr, reg_of(Width::W64, gp), crreg).value()
+                     : Instruction::with2(Code::Mov_cr_r64, crreg, reg_of(Width::W64, gp)).value();
   }
   const Register drreg = kDr[static_cast<std::size_t>(rand_int(c.rng, 0, 7))];
-  return read_dir ? InstructionFactory::with2(Code::MOV_R64_DR, reg_of(Width::W64, gp), drreg)
-                   : InstructionFactory::with2(Code::MOV_DR_R64, drreg, reg_of(Width::W64, gp));
+  return read_dir ? Instruction::with2(Code::Mov_r64_dr, reg_of(Width::W64, gp), drreg).value()
+                   : Instruction::with2(Code::Mov_dr_r64, drreg, reg_of(Width::W64, gp)).value();
 }
 
 // ------------------------------------------------------------------- x87
@@ -2106,8 +2105,8 @@ struct X87MemForm {
 };
 
 constexpr std::array<X87MemForm, 6> kX87Load = {{
-    {Code::FLD_M32FP, 4}, {Code::FLD_M64FP, 8}, {Code::FLD_M80FP, 10},
-    {Code::FILD_M16INT, 2}, {Code::FILD_M32INT, 4}, {Code::FILD_M64INT, 8},
+    {Code::Fld_m32fp, 4}, {Code::Fld_m64fp, 8}, {Code::Fld_m80fp, 10},
+    {Code::Fild_m16int, 2}, {Code::Fild_m32int, 4}, {Code::Fild_m64int, 8},
 }};
 
 [[nodiscard]] std::optional<Instruction> gen_x87_load(Ctx& c) {
@@ -2115,27 +2114,27 @@ constexpr std::array<X87MemForm, 6> kX87Load = {{
   c.touches_memory = true;
   const X87MemForm f = kX87Load[static_cast<std::size_t>(rand_int(c.rng, 0, static_cast<int>(kX87Load.size()) - 1))];
   const std::int8_t disp = random_disp8(c.rng);
-  if (f.code == Code::FILD_M16INT || f.code == Code::FILD_M32INT || f.code == Code::FILD_M64INT) {
+  if (f.code == Code::Fild_m16int || f.code == Code::Fild_m32int || f.code == Code::Fild_m64int) {
     plant_int_operand(c, disp, f.size);
   } else {
     plant_fp_operand(c, disp, f.size);
   }
-  return InstructionFactory::with1(f.code, mem_operand(disp));
+  return Instruction::with1(f.code, mem_operand(disp)).value();
 }
 
 constexpr std::array<X87MemForm, 11> kX87Store = {{
-    {Code::FST_M32FP, 4}, {Code::FST_M64FP, 8},
-    {Code::FSTP_M32FP, 4}, {Code::FSTP_M64FP, 8}, {Code::FSTP_M80FP, 10},
-    {Code::FIST_M16INT, 2}, {Code::FIST_M32INT, 4},
-    {Code::FISTP_M16INT, 2}, {Code::FISTP_M32INT, 4}, {Code::FISTP_M64INT, 8},
-    {Code::FISTTP_M32INT, 4},
+    {Code::Fst_m32fp, 4}, {Code::Fst_m64fp, 8},
+    {Code::Fstp_m32fp, 4}, {Code::Fstp_m64fp, 8}, {Code::Fstp_m80fp, 10},
+    {Code::Fist_m16int, 2}, {Code::Fist_m32int, 4},
+    {Code::Fistp_m16int, 2}, {Code::Fistp_m32int, 4}, {Code::Fistp_m64int, 8},
+    {Code::Fisttp_m32int, 4},
 }};
 
 [[nodiscard]] std::optional<Instruction> gen_x87_store(Ctx& c) {
   x87_setup(c, 1);
   c.touches_memory = true;
   const X87MemForm f = kX87Store[static_cast<std::size_t>(rand_int(c.rng, 0, static_cast<int>(kX87Store.size()) - 1))];
-  return InstructionFactory::with1(f.code, mem_operand(random_disp8(c.rng)));
+  return Instruction::with1(f.code, mem_operand(random_disp8(c.rng))).value();
 }
 
 // The pop forms name ST(i) as the destination and ST(0) as the source, the non-pop ST-ST forms come
@@ -2151,18 +2150,18 @@ struct X87ArithGroup {
 };
 
 constexpr std::array<X87ArithGroup, 6> kX87Arith = {{
-    {Code::FADD_ST0_STI, Code::FADD_STI_ST0, Code::FADDP_STI_ST0, Code::FADD_M32FP, Code::FADD_M64FP,
-     Code::FIADD_M16INT, Code::FIADD_M32INT},
-    {Code::FMUL_ST0_STI, Code::FMUL_STI_ST0, Code::FMULP_STI_ST0, Code::FMUL_M32FP, Code::FMUL_M64FP,
-     Code::FIMUL_M16INT, Code::FIMUL_M32INT},
-    {Code::FSUB_ST0_STI, Code::FSUB_STI_ST0, Code::FSUBP_STI_ST0, Code::FSUB_M32FP, Code::FSUB_M64FP,
-     Code::FISUB_M16INT, Code::FISUB_M32INT},
-    {Code::FSUBR_ST0_STI, Code::FSUBR_STI_ST0, Code::FSUBRP_STI_ST0, Code::FSUBR_M32FP, Code::FSUBR_M64FP,
-     Code::FISUBR_M16INT, Code::FISUBR_M32INT},
-    {Code::FDIV_ST0_STI, Code::FDIV_STI_ST0, Code::FDIVP_STI_ST0, Code::FDIV_M32FP, Code::FDIV_M64FP,
-     Code::FIDIV_M16INT, Code::FIDIV_M32INT},
-    {Code::FDIVR_ST0_STI, Code::FDIVR_STI_ST0, Code::FDIVRP_STI_ST0, Code::FDIVR_M32FP, Code::FDIVR_M64FP,
-     Code::FIDIVR_M16INT, Code::FIDIVR_M32INT},
+    {Code::Fadd_st0_sti, Code::Fadd_sti_st0, Code::Faddp_sti_st0, Code::Fadd_m32fp, Code::Fadd_m64fp,
+     Code::Fiadd_m16int, Code::Fiadd_m32int},
+    {Code::Fmul_st0_sti, Code::Fmul_sti_st0, Code::Fmulp_sti_st0, Code::Fmul_m32fp, Code::Fmul_m64fp,
+     Code::Fimul_m16int, Code::Fimul_m32int},
+    {Code::Fsub_st0_sti, Code::Fsub_sti_st0, Code::Fsubp_sti_st0, Code::Fsub_m32fp, Code::Fsub_m64fp,
+     Code::Fisub_m16int, Code::Fisub_m32int},
+    {Code::Fsubr_st0_sti, Code::Fsubr_sti_st0, Code::Fsubrp_sti_st0, Code::Fsubr_m32fp, Code::Fsubr_m64fp,
+     Code::Fisubr_m16int, Code::Fisubr_m32int},
+    {Code::Fdiv_st0_sti, Code::Fdiv_sti_st0, Code::Fdivp_sti_st0, Code::Fdiv_m32fp, Code::Fdiv_m64fp,
+     Code::Fidiv_m16int, Code::Fidiv_m32int},
+    {Code::Fdivr_st0_sti, Code::Fdivr_sti_st0, Code::Fdivrp_sti_st0, Code::Fdivr_m32fp, Code::Fdivr_m64fp,
+     Code::Fidivr_m16int, Code::Fidivr_m32int},
 }};
 
 [[nodiscard]] std::optional<Instruction> gen_x87_arith(Ctx& c) {
@@ -2171,62 +2170,62 @@ constexpr std::array<X87ArithGroup, 6> kX87Arith = {{
   if (form <= 2) {
     const int i = rand_int(c.rng, 0, 7);
     x87_setup(c, i + 1);
-    if (form == 0) return InstructionFactory::with2(g.st0_sti, Register::ST0, st_of(i));
-    if (form == 1) return InstructionFactory::with2(g.sti_st0, st_of(i), Register::ST0);
-    return InstructionFactory::with2(g.stip_st0, st_of(i), Register::ST0);
+    if (form == 0) return Instruction::with2(g.st0_sti, Register::ST0, st_of(i)).value();
+    if (form == 1) return Instruction::with2(g.sti_st0, st_of(i), Register::ST0).value();
+    return Instruction::with2(g.stip_st0, st_of(i), Register::ST0).value();
   }
   x87_setup(c, 1);
   c.touches_memory = true;
   const std::int8_t disp = random_disp8(c.rng);
   switch (form) {
-    case 3: plant_fp_operand(c, disp, 4); return InstructionFactory::with1(g.m32, mem_operand(disp));
-    case 4: plant_fp_operand(c, disp, 8); return InstructionFactory::with1(g.m64, mem_operand(disp));
-    case 5: plant_int_operand(c, disp, 2); return InstructionFactory::with1(g.m16int, mem_operand(disp));
-    default: plant_int_operand(c, disp, 4); return InstructionFactory::with1(g.m32int, mem_operand(disp));
+    case 3: plant_fp_operand(c, disp, 4); return Instruction::with1(g.m32, mem_operand(disp)).value();
+    case 4: plant_fp_operand(c, disp, 8); return Instruction::with1(g.m64, mem_operand(disp)).value();
+    case 5: plant_int_operand(c, disp, 2); return Instruction::with1(g.m16int, mem_operand(disp)).value();
+    default: plant_int_operand(c, disp, 4); return Instruction::with1(g.m32int, mem_operand(disp)).value();
   }
 }
 
 // Exactly-specified unary operations only. The transcendentals get their own family below because
 // bit-exactness against Intel's microcode is a different question from correctness.
-constexpr std::array<Code, 4> kX87Unary1 = {Code::FSQRT, Code::FRNDINT, Code::FABS, Code::FCHS};
-constexpr std::array<Code, 4> kX87Unary2 = {Code::FSCALE, Code::FPREM, Code::FPREM1, Code::FXTRACT};
+constexpr std::array<Code, 4> kX87Unary1 = {Code::Fsqrt, Code::Frndint, Code::Fabs, Code::Fchs};
+constexpr std::array<Code, 4> kX87Unary2 = {Code::Fscale, Code::Fprem, Code::Fprem1, Code::Fxtract};
 
 [[nodiscard]] std::optional<Instruction> gen_x87_unary(Ctx& c) {
   // FXTRACT reads one register but pushes a second result, so it wants a slot free as well.
   if (rand_int(c.rng, 0, 1) == 0) {
     x87_setup(c, 1);
-    return InstructionFactory::with(kX87Unary1[static_cast<std::size_t>(rand_int(c.rng, 0, 3))]);
+    return Instruction::with(kX87Unary1[static_cast<std::size_t>(rand_int(c.rng, 0, 3))]);
   }
   const Code code = kX87Unary2[static_cast<std::size_t>(rand_int(c.rng, 0, 3))];
-  x87_setup(c, code == Code::FXTRACT ? 1 : 2);
-  return InstructionFactory::with(code);
+  x87_setup(c, code == Code::Fxtract ? 1 : 2);
+  return Instruction::with(code);
 }
 
 constexpr std::array<Code, 8> kX87Transcendental = {
-    Code::FSIN, Code::FCOS, Code::FSINCOS, Code::FPTAN,
-    Code::F2XM1, Code::FYL2X, Code::FYL2XP1, Code::FPATAN,
+    Code::Fsin, Code::Fcos, Code::Fsincos, Code::Fptan,
+    Code::F2xm1, Code::Fyl2x, Code::Fyl2xp1, Code::Fpatan,
 };
 
 [[nodiscard]] std::optional<Instruction> gen_x87_transcendental(Ctx& c) {
   const Code code = kX87Transcendental[static_cast<std::size_t>(rand_int(c.rng, 0, 7))];
-  const bool two_operand = code == Code::FYL2X || code == Code::FYL2XP1 || code == Code::FPATAN;
+  const bool two_operand = code == Code::Fyl2x || code == Code::Fyl2xp1 || code == Code::Fpatan;
   x87_setup(c, two_operand ? 2 : 1);
-  return InstructionFactory::with(code);
+  return Instruction::with(code);
 }
 
 [[nodiscard]] std::optional<Instruction> gen_x87_compare(Ctx& c) {
   const int form = rand_int(c.rng, 0, 9);
   if (form == 0) {
     x87_setup(c, 1);
-    return InstructionFactory::with(Code::FTST);
+    return Instruction::with(Code::Ftst);
   }
   if (form == 1) {
     x87_setup(c, 1);
-    return InstructionFactory::with(Code::FXAM);
+    return Instruction::with(Code::Fxam);
   }
   if (form == 2) {
     x87_setup(c, 2);
-    return InstructionFactory::with(rand_int(c.rng, 0, 1) == 0 ? Code::FCOMPP : Code::FUCOMPP);
+    return Instruction::with(rand_int(c.rng, 0, 1) == 0 ? Code::Fcompp : Code::Fucompp);
   }
   if (form <= 4) {
     x87_setup(c, 1);
@@ -2235,20 +2234,20 @@ constexpr std::array<Code, 8> kX87Transcendental = {
     const bool pop = rand_int(c.rng, 0, 1) == 0;
     const std::int8_t disp = random_disp8(c.rng);
     plant_fp_operand(c, disp, m64 ? 8 : 4);
-    const Code code = m64 ? (pop ? Code::FCOMP_M64FP : Code::FCOM_M64FP)
-                          : (pop ? Code::FCOMP_M32FP : Code::FCOM_M32FP);
-    return InstructionFactory::with1(code, mem_operand(disp));
+    const Code code = m64 ? (pop ? Code::Fcomp_m64fp : Code::Fcom_m64fp)
+                          : (pop ? Code::Fcomp_m32fp : Code::Fcom_m32fp);
+    return Instruction::with1(code, mem_operand(disp)).value();
   }
   // The DCD0/DCD8/DED0 entries are the undocumented alias encodings of the same three operations;
   // hardware runs them, so they are worth putting through the decoder as well.
   static constexpr std::array<Code, 11> kStSt = {
-      Code::FCOM_ST0_STI,   Code::FCOMP_ST0_STI,  Code::FUCOM_ST0_STI,  Code::FUCOMP_ST0_STI,
-      Code::FCOMI_ST0_STI,  Code::FCOMIP_ST0_STI, Code::FUCOMI_ST0_STI, Code::FUCOMIP_ST0_STI,
-      Code::FCOM_ST0_STI_DCD0, Code::FCOMP_ST0_STI_DCD8, Code::FCOMP_ST0_STI_DED0,
+      Code::Fcom_st0_sti,   Code::Fcomp_st0_sti,  Code::Fucom_st0_sti,  Code::Fucomp_st0_sti,
+      Code::Fcomi_st0_sti,  Code::Fcomip_st0_sti, Code::Fucomi_st0_sti, Code::Fucomip_st0_sti,
+      Code::Fcom_st0_sti_DCD0, Code::Fcomp_st0_sti_DCD8, Code::Fcomp_st0_sti_DED0,
   };
   const int i = rand_int(c.rng, 0, 7);
   x87_setup(c, i + 1);
-  return InstructionFactory::with2(kStSt[static_cast<std::size_t>(rand_int(c.rng, 0, 10))], Register::ST0, st_of(i));
+  return Instruction::with2(kStSt[static_cast<std::size_t>(rand_int(c.rng, 0, 10))], Register::ST0, st_of(i)).value();
 }
 
 [[nodiscard]] std::optional<Instruction> gen_x87_move(Ctx& c) {
@@ -2257,34 +2256,34 @@ constexpr std::array<Code, 8> kX87Transcendental = {
   switch (form) {
     case 0:
       x87_setup(c, i + 1);
-      return InstructionFactory::with1(Code::FLD_STI, st_of(i));
+      return Instruction::with1(Code::Fld_sti, st_of(i)).value();
     case 1: {
-      static constexpr std::array<Code, 5> kStore = {Code::FST_STI, Code::FSTP_STI, Code::FSTP_STI_DFD0,
-                                                      Code::FSTP_STI_DFD8, Code::FSTPNCE_STI};
+      static constexpr std::array<Code, 5> kStore = {Code::Fst_sti, Code::Fstp_sti, Code::Fstp_sti_DFD0,
+                                                      Code::Fstp_sti_DFD8, Code::Fstpnce_sti};
       x87_setup(c, 1);
-      return InstructionFactory::with1(kStore[static_cast<std::size_t>(rand_int(c.rng, 0, 4))], st_of(i));
+      return Instruction::with1(kStore[static_cast<std::size_t>(rand_int(c.rng, 0, 4))], st_of(i)).value();
     }
     case 2: {
-      static constexpr std::array<Code, 3> kXchg = {Code::FXCH_ST0_STI, Code::FXCH_ST0_STI_DDC8,
-                                                     Code::FXCH_ST0_STI_DFC8};
+      static constexpr std::array<Code, 3> kXchg = {Code::Fxch_st0_sti, Code::Fxch_st0_sti_DDC8,
+                                                     Code::Fxch_st0_sti_DFC8};
       x87_setup(c, i + 1);
-      return InstructionFactory::with2(kXchg[static_cast<std::size_t>(rand_int(c.rng, 0, 2))], Register::ST0, st_of(i));
+      return Instruction::with2(kXchg[static_cast<std::size_t>(rand_int(c.rng, 0, 2))], Register::ST0, st_of(i)).value();
     }
     case 3:
       x87_setup(c, 0);
-      return InstructionFactory::with1(rand_int(c.rng, 0, 1) == 0 ? Code::FFREE_STI : Code::FFREEP_STI, st_of(i));
+      return Instruction::with1(rand_int(c.rng, 0, 1) == 0 ? Code::Ffree_sti : Code::Ffreep_sti, st_of(i)).value();
     case 4: {
-      static constexpr std::array<Code, 8> kConst = {Code::FLD1, Code::FLDZ,   Code::FLDPI,  Code::FLDL2T,
-                                                      Code::FLDL2E, Code::FLDLG2, Code::FLDLN2, Code::FNOP};
+      static constexpr std::array<Code, 8> kConst = {Code::Fld1, Code::Fldz,   Code::Fldpi,  Code::Fldl2t,
+                                                      Code::Fldl2e, Code::Fldlg2, Code::Fldln2, Code::Fnop};
       x87_setup(c, 0);
-      return InstructionFactory::with(kConst[static_cast<std::size_t>(rand_int(c.rng, 0, 7))]);
+      return Instruction::with(kConst[static_cast<std::size_t>(rand_int(c.rng, 0, 7))]);
     }
     default: {
       static constexpr std::array<Code, 8> kCmov = {
-          Code::FCMOVB_ST0_STI,  Code::FCMOVE_ST0_STI,  Code::FCMOVBE_ST0_STI, Code::FCMOVU_ST0_STI,
-          Code::FCMOVNB_ST0_STI, Code::FCMOVNE_ST0_STI, Code::FCMOVNBE_ST0_STI, Code::FCMOVNU_ST0_STI};
+          Code::Fcmovb_st0_sti,  Code::Fcmove_st0_sti,  Code::Fcmovbe_st0_sti, Code::Fcmovu_st0_sti,
+          Code::Fcmovnb_st0_sti, Code::Fcmovne_st0_sti, Code::Fcmovnbe_st0_sti, Code::Fcmovnu_st0_sti};
       x87_setup(c, i + 1);
-      return InstructionFactory::with2(kCmov[static_cast<std::size_t>(rand_int(c.rng, 0, 7))], Register::ST0, st_of(i));
+      return Instruction::with2(kCmov[static_cast<std::size_t>(rand_int(c.rng, 0, 7))], Register::ST0, st_of(i)).value();
     }
   }
 }
@@ -2294,13 +2293,13 @@ constexpr std::array<Code, 8> kX87Transcendental = {
   x87_setup(c, 0);
   switch (form) {
     case 0:
-      return InstructionFactory::with(Code::FNSTSW_AX);
+      return Instruction::with(Code::Fnstsw_AX);
     case 1:
       c.touches_memory = true;
-      return InstructionFactory::with1(Code::FNSTSW_M2BYTE, mem_operand(random_disp8(c.rng)));
+      return Instruction::with1(Code::Fnstsw_m2byte, mem_operand(random_disp8(c.rng))).value();
     case 2:
       c.touches_memory = true;
-      return InstructionFactory::with1(Code::FNSTCW_M2BYTE, mem_operand(random_disp8(c.rng)));
+      return Instruction::with1(Code::Fnstcw_m2byte, mem_operand(random_disp8(c.rng))).value();
     case 3: {
       // The loaded word is planted rather than left random for the same reason FLDENV is out
       // entirely: a random 16 bits unmasks exceptions, and an unmasked x87 exception in this
@@ -2312,14 +2311,14 @@ constexpr std::array<Code, 8> kX87Transcendental = {
       const auto cw = static_cast<std::uint16_t>(0x037Fu | (static_cast<unsigned>(rand_int(c.rng, 0, 3)) << 10) |
                                                   (rand_int(c.rng, 0, 3) == 0 ? 0x1000u : 0u));
       plant_int(c, disp, cw, 2);
-      return InstructionFactory::with1(Code::FLDCW_M2BYTE, mem_operand(disp));
+      return Instruction::with1(Code::Fldcw_m2byte, mem_operand(disp)).value();
     }
     case 4:
-      return InstructionFactory::with(Code::FNCLEX);
+      return Instruction::with(Code::Fnclex);
     case 5:
-      return InstructionFactory::with(Code::FNINIT);
+      return Instruction::with(Code::Fninit);
     default:
-      return InstructionFactory::with(rand_int(c.rng, 0, 1) == 0 ? Code::FINCSTP : Code::FDECSTP);
+      return Instruction::with(rand_int(c.rng, 0, 1) == 0 ? Code::Fincstp : Code::Fdecstp);
   }
 }
 
